@@ -3,6 +3,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
 
+## v0.4.0 - 2026-10-13
+#### 🚀 Features
+* Dark theme by default (Windows 11 "Sun Valley" look via `sv-ttk`), switchable to light with the ☀/☾ button; the choice is remembered.
+* Native Windows title bar follows the theme (DWM immersive dark mode).
+* Falls back to a hand-made dark/light palette on stock ttk when `sv-ttk` is missing or unsupported (Tk 9).
+
 ## v0.3.0 - 2026-10-13
 #### 🚀 Features
 * **Конфликты и порядок…**: reads the file index of every `.pak` (footer + index only, no data) and lists, among enabled mods:

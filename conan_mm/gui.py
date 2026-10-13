@@ -13,6 +13,18 @@ from tkinter import filedialog, messagebox, simpledialog, ttk
 from . import __version__, analyze, steam
 from .core import Game
 
+try:
+    import sv_ttk  # Windows 11 "Sun Valley" ttk theme, light + dark
+except ImportError:  # running from source without it: plain ttk, still works
+    sv_ttk = None
+
+PALETTE = {
+    "dark": {"dim": "#9a9a9a", "off": "#6f6f6f", "warn": "#f0a54a", "bad": "#ff6b6b", "good": "#5fd38d",
+             "text_bg": "#1c1c1c", "text_fg": "#e6e6e6"},
+    "light": {"dim": "#555555", "off": "#999999", "warn": "#b35c00", "bad": "#cc0000", "good": "#008855",
+              "text_bg": "#ffffff", "text_fg": "#1c1c1c"},
+}
+
 SOURCE_LABEL = {"managed": "менеджер", "steam": "Steam", "local": "вручную", "missing": "—"}
 
 
@@ -37,6 +49,22 @@ def detect_game_dir():
     return None
 
 
+def dark_titlebar(win, dark):
+    """Windows 10 1809+/11: paint the native title bar to match the theme."""
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        win.update_idletasks()
+        hwnd = ctypes.windll.user32.GetParent(win.winfo_id())
+        value = ctypes.c_int(1 if dark else 0)
+        for attr in (20, 19):  # DWMWA_USE_IMMERSIVE_DARK_MODE, pre-20H1 value
+            if ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, attr, ctypes.byref(value), ctypes.sizeof(value)) == 0:
+                break
+    except (OSError, AttributeError):
+        pass
+
+
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -54,8 +82,9 @@ class App(tk.Tk):
         self.steamcmd = steam.SteamCmd(self.data_dir / "steamcmd", log=self.log_threadsafe)
         self._build()
         self.after(100, self._pump)
-        cfg = self._load_cfg()
-        start = cfg.get("game_dir") or detect_game_dir()
+        self.cfg = self._load_cfg()
+        self.apply_theme(self.cfg.get("theme", "dark"))
+        start = self.cfg.get("game_dir") or detect_game_dir()
         if start:
             self.open_game(start)
 
@@ -66,7 +95,9 @@ class App(tk.Tk):
         top.pack(fill="x")
         ttk.Label(top, text="Папка игры:").pack(side="left")
         self.path_var = tk.StringVar(value="не выбрана")
-        ttk.Label(top, textvariable=self.path_var, foreground="#555").pack(side="left", padx=6, fill="x", expand=True)
+        ttk.Label(top, textvariable=self.path_var, style="Dim.TLabel").pack(side="left", padx=6, fill="x", expand=True)
+        self.theme_btn = ttk.Button(top, text="☀ Светлая", command=self.toggle_theme)
+        self.theme_btn.pack(side="right", padx=(6, 0))
         ttk.Button(top, text="Выбрать…", command=self.pick_game).pack(side="right")
 
         mid = ttk.Frame(self, padding=(6, 0))
@@ -80,8 +111,6 @@ class App(tk.Tk):
         ):
             self.tree.heading(c, text=text)
             self.tree.column(c, width=w, anchor=anchor, stretch=(c == "title"))
-        self.tree.tag_configure("off", foreground="#999")
-        self.tree.tag_configure("warn", foreground="#b35c00")
         sb = ttk.Scrollbar(mid, command=self.tree.yview)
         self.tree.configure(yscrollcommand=sb.set)
         self.tree.pack(side="left", fill="both", expand=True)
@@ -141,8 +170,86 @@ class App(tk.Tk):
             return {}
 
     def _save_cfg(self):
-        self.data_dir.mkdir(parents=True, exist_ok=True)
-        self.cfg_path.write_text(json.dumps({"game_dir": str(self.game.root)}), encoding="utf-8")
+        if self.game:
+            self.cfg["game_dir"] = str(self.game.root)
+        try:
+            self.data_dir.mkdir(parents=True, exist_ok=True)
+            self.cfg_path.write_text(json.dumps(self.cfg), encoding="utf-8")
+        except OSError as e:
+            self.log(f"Не сохранил настройки: {e}")
+
+    # ---------- theme ----------
+
+    def apply_theme(self, name):
+        self.theme = name if name in PALETTE else "dark"
+        c = PALETTE[self.theme]
+        global sv_ttk
+        style = ttk.Style(self)
+        if sv_ttk:
+            try:
+                sv_ttk.set_theme(self.theme, self)
+            except tk.TclError:  # e.g. Tk 9, which sv-ttk does not support yet
+                sv_ttk = None
+        if not sv_ttk:
+            self._fallback_theme(style, self.theme)
+        style.configure("Dim.TLabel", foreground=c["dim"])
+        style.configure("Treeview", rowheight=26 if sv_ttk else 20)
+        for w in self._themed_windows():
+            dark_titlebar(w, self.theme == "dark")
+        for t in self._themed_texts():
+            t.configure(background=c["text_bg"], foreground=c["text_fg"], insertbackground=c["text_fg"],
+                        relief="flat", highlightthickness=0)
+        for tree in self._themed_trees():
+            tree.tag_configure("off", foreground=c["off"])
+            tree.tag_configure("warn", foreground=c["warn"])
+            tree.tag_configure("bad", foreground=c["bad"])
+            tree.tag_configure("moved", foreground=c["good"])
+        if hasattr(self, "theme_btn"):
+            self.theme_btn.configure(text="☀ Светлая" if self.theme == "dark" else "☾ Тёмная")
+
+    def _fallback_theme(self, style, name):
+        """Hand-made dark/light palette on top of the stock 'clam' theme."""
+        style.theme_use("clam")
+        if name == "dark":
+            bg, fg, field, sel, line = "#202020", "#e6e6e6", "#1a1a1a", "#2f5f8f", "#3a3a3a"
+        else:
+            bg, fg, field, sel, line = "#f3f3f3", "#1c1c1c", "#ffffff", "#cce4f7", "#d0d0d0"
+        style.configure(".", background=bg, foreground=fg, fieldbackground=field, bordercolor=line,
+                        lightcolor=bg, darkcolor=bg, troughcolor=field, focuscolor=sel)
+        style.configure("TButton", background=line if name == "dark" else "#e5e5e5", padding=(8, 3))
+        style.map("TButton", background=[("active", sel), ("disabled", bg)], foreground=[("disabled", "#777")])
+        style.configure("Treeview", background=field, fieldbackground=field, foreground=fg)
+        style.map("Treeview", background=[("selected", sel)], foreground=[("selected", fg)])
+        style.configure("Treeview.Heading", background=line if name == "dark" else "#e5e5e5", foreground=fg)
+        style.map("Treeview.Heading", background=[("active", sel)])
+        style.configure("TLabelframe.Label", background=bg, foreground=fg)
+        self.configure(background=bg)
+        for w in self.winfo_children():
+            if isinstance(w, tk.Toplevel):
+                w.configure(background=bg)
+        self.option_add("*Menu.background", field)
+        self.option_add("*Menu.foreground", fg)
+        self.menu.configure(background=field, foreground=fg, activebackground=sel, activeforeground=fg)
+
+    def toggle_theme(self):
+        self.apply_theme("light" if self.theme == "dark" else "dark")
+        self.cfg["theme"] = self.theme
+        self._save_cfg()
+
+    def _themed_windows(self):
+        return [self] + [w for w in self.winfo_children() if isinstance(w, tk.Toplevel)]
+
+    def _themed_texts(self):
+        out = [getattr(self, "logbox", None)]
+        out += [w.assets for w in self.winfo_children() if isinstance(w, ConflictsDialog)]
+        return [t for t in out if t is not None]
+
+    def _themed_trees(self):
+        out = [getattr(self, "tree", None)]
+        for w in self.winfo_children():
+            if isinstance(w, ConflictsDialog):
+                out += [w.ctree, w.otree]
+        return [t for t in out if t is not None]
 
     def log(self, msg):
         self.logbox.configure(state="normal")
@@ -449,7 +556,7 @@ class ConflictsDialog(tk.Toplevel):
         self.summary.pack(fill="x")
         hint = ("Побеждает мод ниже в списке. Порядок: патчи — под модом, который они правят; "
                 "узкие правки — под крупными модами. Enhanced-моды (UE5) упакованы иначе — их файлы не сравниваются.")
-        ttk.Label(self, text=hint, foreground="#555", wraplength=870, padding=(6, 0)).pack(fill="x")
+        ttk.Label(self, text=hint, style="Dim.TLabel", wraplength=870, padding=(6, 0)).pack(fill="x")
 
         top = ttk.Frame(self, padding=6)
         top.pack(fill="both", expand=True)
@@ -457,7 +564,6 @@ class ConflictsDialog(tk.Toplevel):
         for c, text, w in (("kind", "Тип", 220), ("win", "Побеждает (ниже)", 260), ("lose", "Перекрыт", 260), ("n", "Файлов", 70)):
             self.ctree.heading(c, text=text)
             self.ctree.column(c, width=w, stretch=c in ("win", "lose"))
-        self.ctree.tag_configure("bad", foreground="#c00")
         self.ctree.pack(fill="both", expand=True)
         self.ctree.bind("<<TreeviewSelect>>", self._show_assets)
         self.assets = tk.Text(top, height=6, wrap="none", font=("Consolas", 9), state="disabled")
@@ -469,13 +575,13 @@ class ConflictsDialog(tk.Toplevel):
         for c, text, w in (("n", "#", 40), ("now", "Сейчас", 380), ("new", "Предложено", 380)):
             self.otree.heading(c, text=text)
             self.otree.column(c, width=w, stretch=c != "n")
-        self.otree.tag_configure("moved", foreground="#0a5")
         self.otree.pack(fill="both", expand=True)
         btns = ttk.Frame(self, padding=6)
         btns.pack(fill="x")
         self.apply_btn = ttk.Button(btns, text="Применить порядок", command=self.apply)
         self.apply_btn.pack(side="right")
         ttk.Button(btns, text="Закрыть", command=self.destroy).pack(side="right", padx=6)
+        app.apply_theme(app.theme)
         self.refresh()
 
     def _title(self, key):

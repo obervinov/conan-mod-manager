@@ -76,6 +76,7 @@ On first start it finds the Steam install of Conan Exiles through the registry a
 | Удалить | Delete the mod files and remove them from `modlist.txt` |
 | Конфликты и порядок… | Conflicts between enabled mods and a suggested load order you can apply in one click |
 | Бэкап в zip… | Save all mod files, `modlist.txt` and `backup.json` (order, on/off, ids) into one archive |
+| ☀ Светлая / ☾ Тёмная | Switch between the dark (default) and light themes |
 | `Ctrl+C` / right click | Copy title, Workshop ID, link or file path of the selected mods |
 
 > [!WARNING]
@@ -83,7 +84,8 @@ On first start it finds the Steam install of Conan Exiles through the registry a
 
 ## <img src="https://github.com/obervinov/_templates/blob/v1.2.2/icons/github-actions.png" width="25" title="development"> Development
 ```bat
-python main.py          :: run from source (Python 3.10+, stdlib only)
+pip install -r requirements.txt  :: optional: sv-ttk theme, falls back to plain ttk without it
+python main.py          :: run from source (Python 3.10+)
 python -m unittest -v   :: tests
 build.bat               :: local build into dist\ConanModManager.exe
 ```
