@@ -110,6 +110,20 @@ class GameTest(unittest.TestCase):
         self.assertEqual(m.source, "managed")
         self.assertTrue(m.enabled)
 
+    def test_export_zip(self):
+        import zipfile
+        self.game.set_enabled("local:Local.pak", False)
+        dest = Path(self.tmp.name) / "b.zip"
+        total = self.game.export_zip(dest)
+        self.assertEqual(total, 15)
+        with zipfile.ZipFile(dest) as zf:
+            self.assertEqual(sorted(zf.namelist()),
+                             ["Mods/Local.pak", "Workshop/111111/SteamMod.pak", "backup.json", "modlist.txt"])
+            meta = json.loads(zf.read("backup.json"))
+        self.assertEqual([(m["key"], m["enabled"]) for m in meta["mods"]],
+                         [("steam:111111", True), ("local:Local.pak", False), ("missing:C:\\gone\\Missing.pak", True)])
+        self.assertFalse(Path(str(dest) + ".tmp").exists())
+
     def test_pirate_layout_without_workshop(self):
         root = Path(self.tmp.name) / "Conan Exiles"
         (root / "ConanSandbox" / "Mods").mkdir(parents=True)

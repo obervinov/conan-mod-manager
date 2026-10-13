@@ -23,6 +23,7 @@ A small single-exe Windows app to keep Conan Exiles mods in order **without star
 - check installed mods for updates and update them in one click
 - enable/disable mods and change their load order
 - remove a mod together with every file it brought
+- back up the whole mod setup into one zip
 
 It works for both the Steam version and non-Steam copies. Downloads go through an anonymous `steamcmd`, so it needs no Steam login and no game ownership.
 
@@ -59,6 +60,8 @@ On first start it finds the Steam install of Conan Exiles through the registry a
 | Обновить выбранные / все | Re-download the outdated or broken mods |
 | Привязать к Workshop ID | Turn a hand-dropped `.pak` into a tracked mod |
 | Удалить | Delete the mod files and remove them from `modlist.txt` |
+| Бэкап в zip… | Save all mod files, `modlist.txt` and `backup.json` (order, on/off, ids) into one archive |
+| `Ctrl+C` / right click | Copy title, Workshop ID, link or file path of the selected mods |
 
 > [!WARNING]
 > Removing a mod from a world that already uses it (buildings, items, thralls) can break the save: that data lives in `game.db`, and no file manager can clean it.

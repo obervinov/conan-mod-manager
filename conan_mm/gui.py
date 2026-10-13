@@ -4,6 +4,7 @@ import queue
 import re
 import sys
 import threading
+import time
 import tkinter as tk
 import webbrowser
 from pathlib import Path
@@ -84,6 +85,17 @@ class App(tk.Tk):
         sb.pack(side="left", fill="y")
         self.tree.bind("<Double-1>", lambda e: self.toggle())
         self.tree.bind("<space>", lambda e: self.toggle())
+        for seq in ("<Control-c>", "<Command-c>"):
+            self.tree.bind(seq, lambda e: self.copy("title"))
+        self.menu = tk.Menu(self, tearoff=0)
+        self.menu.add_command(label="Копировать название", command=lambda: self.copy("title"))
+        self.menu.add_command(label="Копировать Workshop ID", command=lambda: self.copy("wid"))
+        self.menu.add_command(label="Копировать ссылку", command=lambda: self.copy("url"))
+        self.menu.add_command(label="Копировать путь к файлу", command=lambda: self.copy("path"))
+        self.menu.add_separator()
+        self.menu.add_command(label="Открыть в Workshop", command=lambda: self.open_page())
+        for seq in ("<Button-3>", "<Button-2>"):
+            self.tree.bind(seq, self._popup)
 
         side = ttk.Frame(mid, padding=(8, 0))
         side.pack(side="left", fill="y")
@@ -102,6 +114,7 @@ class App(tk.Tk):
             ("Открыть в Workshop", self.open_page),
             ("Удалить", self.remove),
             (None, None),
+            ("Бэкап в zip…", self.export),
             ("Перечитать с диска", self.refresh),
         ):
             if text is None:
@@ -206,6 +219,33 @@ class App(tk.Tk):
         keep = [k for k in sel if self.tree.exists(k)]
         if keep:
             self.tree.selection_set(keep)
+
+    def _popup(self, event):
+        row = self.tree.identify_row(event.y)
+        if row and row not in self.tree.selection():
+            self.tree.selection_set(row)
+        if self.tree.selection():
+            self.menu.tk_popup(event.x_root, event.y_root)
+
+    def copy(self, what):
+        """Ctrl+C / context menu: one line per selected mod into the clipboard."""
+        if not self.game:
+            return
+        out = []
+        for k in self.selected():
+            m = self.game.get(k)
+            if what == "title":
+                out.append(m.title)
+            elif what == "wid" and m.wid:
+                out.append(m.wid)
+            elif what == "url" and m.wid:
+                out.append(steam.workshop_url(m.wid))
+            elif what == "path":
+                out += [str(f) for f in m.files] or [m.raw_line or ""]
+        if out:
+            self.clipboard_clear()
+            self.clipboard_append("\n".join(out))
+            self.log(f"Скопировано: {out[0]}" + (f" (+{len(out) - 1})" if len(out) > 1 else ""))
 
     def selected(self):
         return list(self.tree.selection())
@@ -325,6 +365,20 @@ class App(tk.Tk):
             game.apply_details(self.details)
 
         self.background(work, then)
+
+    @guarded
+    def export(self):
+        name = time.strftime("ConanMods-%Y%m%d-%H%M.zip")
+        dest = filedialog.asksaveasfilename(
+            title="Сохранить бэкап модов", initialfile=name, defaultextension=".zip",
+            filetypes=[("Zip", "*.zip")])
+        if not dest:
+            return
+        game = self.game
+        self.log(f"Бэкап → {dest}")
+        self.background(
+            lambda: game.export_zip(dest, log=self.log_threadsafe),
+            lambda total: self.log(f"Бэкап готов: {len(game.mods)} модов, {total // 1024 // 1024} MB → {dest}"))
 
     @guarded
     def check(self):

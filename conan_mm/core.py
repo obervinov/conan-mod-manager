@@ -10,6 +10,7 @@ import json
 import os
 import shutil
 import time
+import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -202,6 +203,37 @@ class Game:
         m.key, m.source, m.wid, m.title = f"ws:{wid}", "managed", wid, title or m.title
         self.mods[idx] = m
         self.save()
+
+    def export_zip(self, dest, log=None):
+        """Dumps every mod file + modlist.txt + a self-describing backup.json into one zip.
+
+        Layout: Mods/<pak> for managed/local mods, Workshop/<id>/<pak> for Steam ones,
+        so the zip is enough to rebuild the setup on another PC or a non-Steam copy.
+        """
+        log = log or self.log
+        dest = Path(dest)
+        tmp = dest.with_name(dest.name + ".tmp")
+        entries, total = [], 0
+        with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED, compresslevel=1) as zf:
+            for m in self.mods:
+                arc = []
+                for f in m.files:
+                    if not f.exists():
+                        continue
+                    name = f"Workshop/{m.wid}/{f.name}" if m.source == "steam" else f"Mods/{f.name}"
+                    log(f"zip: {name} ({f.stat().st_size // 1024 // 1024} MB)")
+                    zf.write(f, name)
+                    arc.append(name)
+                    total += f.stat().st_size
+                entries.append({"key": m.key, "source": m.source, "wid": m.wid, "title": m.title,
+                                "enabled": m.enabled, "files": arc, "raw_line": m.raw_line})
+            if self.modlist_path.exists():
+                zf.write(self.modlist_path, MODLIST)
+            zf.writestr("backup.json", json.dumps({
+                "format": 1, "created": int(time.time()), "game_root": str(self.root),
+                "manifest": self.manifest, "mods": entries}, indent=2, ensure_ascii=False))
+        os.replace(tmp, dest)
+        return total
 
     def install(self, wid, folder, details):
         """Moves freshly downloaded paks from steamcmd's folder into ConanSandbox/Mods."""
