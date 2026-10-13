@@ -10,7 +10,7 @@ import webbrowser
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
-from . import __version__, steam
+from . import __version__, analyze, steam
 from .core import Game
 
 SOURCE_LABEL = {"managed": "менеджер", "steam": "Steam", "local": "вручную", "missing": "—"}
@@ -49,6 +49,8 @@ class App(tk.Tk):
         self.busy = False
         self.game = None
         self.details = {}
+        self.scanner = analyze.Scanner()
+        self.infos, self.conflicts, self.engine = {}, [], None
         self.steamcmd = steam.SteamCmd(self.data_dir / "steamcmd", log=self.log_threadsafe)
         self._build()
         self.after(100, self._pump)
@@ -69,11 +71,12 @@ class App(tk.Tk):
 
         mid = ttk.Frame(self, padding=(6, 0))
         mid.pack(fill="both", expand=True)
-        cols = ("n", "on", "title", "wid", "src", "status")
+        cols = ("n", "on", "title", "wid", "src", "eng", "cnf", "status")
         self.tree = ttk.Treeview(mid, columns=cols, show="headings", selectmode="extended")
         for c, text, w, anchor in (
             ("n", "#", 40, "e"), ("on", "Вкл", 45, "center"), ("title", "Мод", 420, "w"),
-            ("wid", "Workshop ID", 110, "w"), ("src", "Источник", 90, "w"), ("status", "Статус", 150, "w"),
+            ("wid", "Workshop ID", 110, "w"), ("src", "Источник", 80, "w"),
+            ("eng", "Движок", 60, "center"), ("cnf", "Конфл.", 55, "center"), ("status", "Статус", 230, "w"),
         ):
             self.tree.heading(c, text=text)
             self.tree.column(c, width=w, anchor=anchor, stretch=(c == "title"))
@@ -105,6 +108,8 @@ class App(tk.Tk):
             ("Вкл / выкл", self.toggle),
             ("▲ Выше", lambda: self.move(-1)),
             ("▼ Ниже", lambda: self.move(1)),
+            (None, None),
+            ("Конфликты и порядок…", self.show_conflicts),
             (None, None),
             ("Проверить обновления", self.check),
             ("Обновить выбранные", self.update_selected),
@@ -202,20 +207,34 @@ class App(tk.Tk):
 
     # ---------- view ----------
 
+    def analyze(self):
+        """Pak indexes are cached, so this is cheap enough to run on every redraw."""
+        self.infos = {m.key: self.scanner.mod(m) for m in self.game.mods if m.files}
+        enabled = [m for m in self.game.mods if m.enabled and m.key in self.infos]
+        self.conflicts = analyze.find_conflicts(enabled, self.infos)
+
     def redraw(self):
         if not self.game:
             return
+        self.analyze()
+        per_mod = {}
+        for c in self.conflicts:
+            for k in (c.winner, c.loser):
+                per_mod[k] = per_mod.get(k, 0) + 1
         sel = set(self.tree.selection())
         self.tree.delete(*self.tree.get_children())
         n = 0
         for m in self.game.mods:
             n += m.enabled
+            info = self.infos.get(m.key)
+            compat = analyze.compat_issue(info.engine, self.engine) if info else None
+            status = compat or (f"не читается: {info.error}" if info and info.error else m.status)
             tags = ("off",) if not m.enabled else ()
-            if m.status and m.status != "актуален":
+            if (status and status != "актуален") or per_mod.get(m.key):
                 tags += ("warn",)
             self.tree.insert("", "end", iid=m.key, tags=tags, values=(
                 n if m.enabled else "", "✔" if m.enabled else "", m.title, m.wid or "",
-                SOURCE_LABEL[m.source], m.status))
+                SOURCE_LABEL[m.source], info.engine if info else "", per_mod.get(m.key, ""), status))
         keep = [k for k in sel if self.tree.exists(k)]
         if keep:
             self.tree.selection_set(keep)
@@ -266,7 +285,9 @@ class App(tk.Tk):
         self._save_cfg()
         ws = f" | Workshop: {self.game.workshop_dir}" if self.game.workshop_dir else " | без Steam Workshop"
         self.path_var.set(f"{self.game.root}{ws}")
-        self.log(f"Модов найдено: {len(self.game.mods)}")
+        self.engine = analyze.game_engine(self.game)
+        label = {"UE5": "Enhanced (UE5)", "UE4": "Legacy (UE4)"}.get(self.engine, "не определена")
+        self.log(f"Модов найдено: {len(self.game.mods)}. Версия игры: {label}")
         self.redraw()
 
     @guarded
@@ -381,6 +402,10 @@ class App(tk.Tk):
             lambda total: self.log(f"Бэкап готов: {len(game.mods)} модов, {total // 1024 // 1024} MB → {dest}"))
 
     @guarded
+    def show_conflicts(self):
+        ConflictsDialog(self)
+
+    @guarded
     def check(self):
         ids = [m.wid for m in self.game.mods if m.wid]
         if not ids:
@@ -410,6 +435,104 @@ class App(tk.Tk):
             self.log("Нечего обновлять. Сначала «Проверить обновления».")
             return
         self.install(ids)
+
+
+class ConflictsDialog(tk.Toplevel):
+    def __init__(self, app):
+        super().__init__(app)
+        self.app = app
+        self.title("Конфликты и порядок загрузки")
+        self.geometry("900x620")
+        self.transient(app)
+
+        self.summary = ttk.Label(self, padding=6)
+        self.summary.pack(fill="x")
+        hint = ("Побеждает мод ниже в списке. Порядок: патчи — под модом, который они правят; "
+                "узкие правки — под крупными модами. Enhanced-моды (UE5) упакованы иначе — их файлы не сравниваются.")
+        ttk.Label(self, text=hint, foreground="#555", wraplength=870, padding=(6, 0)).pack(fill="x")
+
+        top = ttk.Frame(self, padding=6)
+        top.pack(fill="both", expand=True)
+        self.ctree = ttk.Treeview(top, columns=("kind", "win", "lose", "n"), show="headings", height=8)
+        for c, text, w in (("kind", "Тип", 220), ("win", "Побеждает (ниже)", 260), ("lose", "Перекрыт", 260), ("n", "Файлов", 70)):
+            self.ctree.heading(c, text=text)
+            self.ctree.column(c, width=w, stretch=c in ("win", "lose"))
+        self.ctree.tag_configure("bad", foreground="#c00")
+        self.ctree.pack(fill="both", expand=True)
+        self.ctree.bind("<<TreeviewSelect>>", self._show_assets)
+        self.assets = tk.Text(top, height=6, wrap="none", font=("Consolas", 9), state="disabled")
+        self.assets.pack(fill="x", pady=(6, 0))
+
+        bottom = ttk.LabelFrame(self, text="Предложенный порядок (только включённые моды)", padding=6)
+        bottom.pack(fill="both", expand=True, padx=6)
+        self.otree = ttk.Treeview(bottom, columns=("n", "now", "new"), show="headings", height=8)
+        for c, text, w in (("n", "#", 40), ("now", "Сейчас", 380), ("new", "Предложено", 380)):
+            self.otree.heading(c, text=text)
+            self.otree.column(c, width=w, stretch=c != "n")
+        self.otree.tag_configure("moved", foreground="#0a5")
+        self.otree.pack(fill="both", expand=True)
+        btns = ttk.Frame(self, padding=6)
+        btns.pack(fill="x")
+        self.apply_btn = ttk.Button(btns, text="Применить порядок", command=self.apply)
+        self.apply_btn.pack(side="right")
+        ttk.Button(btns, text="Закрыть", command=self.destroy).pack(side="right", padx=6)
+        self.refresh()
+
+    def _title(self, key):
+        return self.app.game.get(key).title
+
+    def refresh(self):
+        app = self.app
+        app.analyze()
+        enabled = [m for m in app.game.mods if m.enabled]
+        pos = {m.key: i for i, m in enumerate(enabled)}
+        self.ctree.delete(*self.ctree.get_children())
+        self.by_iid = {}
+        bad = 0
+        for i, c in enumerate(app.conflicts):
+            wrong = c.kind == "patch" and pos[c.winner] < pos[c.loser]
+            bad += wrong
+            label = analyze.KIND_LABEL[c.kind] + (" — патч выше мода!" if wrong else "")
+            iid = str(i)
+            self.by_iid[iid] = c
+            self.ctree.insert("", "end", iid=iid, tags=("bad",) if wrong or c.kind == "duplicate" else (),
+                              values=(label, self._title(c.winner), self._title(c.loser), len(c.assets)))
+        unread = sum(1 for m in enabled if app.infos.get(m.key) and app.infos[m.key].error)
+        ue5 = sum(1 for m in enabled if app.infos.get(m.key) and app.infos[m.key].engine == "UE5")
+        self.summary.configure(text=(
+            f"Включено модов: {len(enabled)}. Конфликтов: {len(app.conflicts)}"
+            + (f", патчей не на месте: {bad}" if bad else "")
+            + (f". Без проверки файлов (UE5): {ue5}" if ue5 else "")
+            + (f". Не прочитано: {unread}" if unread else "")))
+
+        self.suggested = analyze.suggest_order(enabled, app.infos, app.conflicts)
+        self.otree.delete(*self.otree.get_children())
+        for i, (m, key) in enumerate(zip(enabled, self.suggested), 1):
+            self.otree.insert("", "end", tags=("moved",) if m.key != key else (),
+                              values=(i, m.title, self._title(key)))
+        changed = [m.key for m in enabled] != self.suggested
+        self.apply_btn.state(["!disabled"] if changed else ["disabled"])
+        self.apply_btn.configure(text="Применить порядок" if changed else "Порядок уже оптимален")
+
+    def _show_assets(self, _):
+        sel = self.ctree.selection()
+        c = self.by_iid.get(sel[0]) if sel else None
+        self.assets.configure(state="normal")
+        self.assets.delete("1.0", "end")
+        if c:
+            self.assets.insert("end", "\n".join(sorted(c.assets)[:300]))
+        self.assets.configure(state="disabled")
+
+    def apply(self):
+        game = self.app.game
+        slots = [i for i, m in enumerate(game.mods) if m.enabled]
+        by_key = {m.key: m for m in game.mods}
+        for i, key in zip(slots, self.suggested):
+            game.mods[i] = by_key[key]
+        game.save()
+        self.app.log("Применён предложенный порядок загрузки")
+        self.app.redraw()
+        self.refresh()
 
 
 def main():

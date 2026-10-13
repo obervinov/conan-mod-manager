@@ -3,6 +3,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
 
+## v0.3.0 - 2026-10-13
+#### 🚀 Features
+* **Конфликты и порядок…**: reads the file index of every `.pak` (footer + index only, no data) and lists, among enabled mods:
+  - two mods overriding the same base-game asset (the one lower in the load order wins)
+  - a patch writing into another mod's `Mods/<Name>/` folder, flagged red when it sits above that mod
+  - different copies of the same `ModsShared/<Lib>` library (SHA1 differs)
+  - the same mod installed twice
+* Suggested load order (stable topological sort): patches under the mod they patch, narrow tweaks under broad overhauls, everything else keeps its place. Preview side by side, applied with one click.
+* Engine check: `Движок` column (UE4 = Legacy, UE5 = Enhanced) compared with the game's own content paks. A Legacy mod in Enhanced (or the reverse) is flagged, since the game silently skips it.
+* `Конфл.` column with the conflict count per mod.
+#### 🐛 Bug Fixes
+* `modlist.txt` now lists mods from `ConanSandbox/Mods` as `*Name.pak` (the documented relative form), so moving the game folder does not break the list.
+#### 📝 Notes
+* Supports Conan's v4 pak index (with Funcom's 4 extra bytes per entry) and the UE5 v10–v12 directory index. Enhanced mods are containers of IoStore packages, so their assets are not compared, only the engine.
+
 ## v0.2.0 - 2026-10-13
 #### 🚀 Features
 * Copy from the mod table: `Ctrl+C` copies titles of the selected mods; the right-click menu also copies Workshop ID, Workshop link or `.pak` path.

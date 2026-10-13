@@ -91,6 +91,10 @@ class Game:
         path = Path(p)
         return path if path.is_absolute() else self.mods_dir / path
 
+    def _line(self, f):
+        """`*Name.pak` = relative to ConanSandbox/Mods (the documented form), else absolute."""
+        return f"*{f.name}" if f.parent == self.mods_dir else str(f)
+
     def save(self):
         """Writes modlist.txt (enabled mods, in order) and the manifest."""
         if not self.manifest_path.exists() and self.modlist_path.exists():
@@ -105,7 +109,7 @@ class Game:
             if m.source == "missing":
                 lines.append(m.raw_line)
             else:
-                lines += [str(f) for f in m.files]
+                lines += [self._line(f) for f in m.files]
         self._write(self.modlist_path, "".join(ln + "\n" for ln in lines))
         self.manifest["order"] = [m.key for m in self.mods if m.source != "missing"]
         self._write(self.manifest_path, json.dumps(self.manifest, indent=2, ensure_ascii=False))

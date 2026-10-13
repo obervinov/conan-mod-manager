@@ -52,7 +52,7 @@ class GameTest(unittest.TestCase):
         self.assertEqual(self.modlist(), [str(self.ws / "SteamMod.pak"), "C:\\gone\\Missing.pak"])
         self.game.set_enabled("local:Local.pak", True)
         self.game.move("local:Local.pak", -1)
-        self.assertEqual(self.modlist()[:2], [str(self.mods / "Local.pak"), str(self.ws / "SteamMod.pak")])
+        self.assertEqual(self.modlist()[:2], ["*Local.pak", str(self.ws / "SteamMod.pak")])
         # survives a rescan
         self.game.reload()
         self.assertEqual(self.keys()[:2], ["local:Local.pak", "steam:111111"])
@@ -78,7 +78,7 @@ class GameTest(unittest.TestCase):
         self.game.install("880454836", dl, {"title": "Pippi", "time_updated": 100})
         self.assertNotIn("local:Pippi.pak", self.keys())
         self.assertEqual((self.mods / "Pippi.pak").read_bytes(), b"p" * 7)
-        self.assertIn(str(self.mods / "Pippi.pak"), self.modlist())
+        self.assertIn("*Pippi.pak", self.modlist())
 
         self.game.apply_details({"880454836": {"ok": True, "title": "Pippi", "time_updated": 200, "file_size": 7},
                                  "111111": {"ok": True, "title": "Steam One", "time_updated": 1, "file_size": 10}})

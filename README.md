@@ -24,6 +24,7 @@ A small single-exe Windows app to keep Conan Exiles mods in order **without star
 - enable/disable mods and change their load order
 - remove a mod together with every file it brought
 - back up the whole mod setup into one zip
+- see conflicts between mods, Legacy/Enhanced mismatches, and get a suggested load order
 
 It works for both the Steam version and non-Steam copies. Downloads go through an anonymous `steamcmd`, so it needs no Steam login and no game ownership.
 
@@ -43,6 +44,19 @@ The mod list combines three sources:
 | **Steam** | `steamapps/workshop/content/440900/<id>` | by the Steam client | unsubscribe in Workshop (the app only disables it) |
 | **вручную** | `.pak` dropped into `ConanSandbox/Mods` by hand | after *Привязать к Workshop ID* | deletes the file |
 
+### Conflicts and load order
+Only the index of every `.pak` is read (footer + file list, a few hundred KB even for a 2 GB mod). Asset paths are sorted into three groups:
+
+| Path in the pak | Meaning | Reported when |
+| --- | --- | --- |
+| `Mods/<Name>/…` | the mod's own content | another mod writes there (**patch**, which must load below it), or the same mod is installed twice |
+| `ModsShared/<Lib>/…` | a library bundled into many mods | the copies differ (SHA1) |
+| anything else | an override of a base-game asset | two enabled mods override it; the one **lower** in the list wins |
+
+The suggested order puts patches under the mod they patch and narrow tweaks under broad overhauls, and leaves everything else where it was.
+
+The `Движок` column shows UE4 (Legacy) or UE5 (Enhanced) from the pak format version. A mod built for the other engine is flagged, because Enhanced silently skips Legacy mods. Enhanced mods are containers of IoStore packages, so for them only the engine is checked.
+
 If `modlist.txt` is edited by hand (or by the game launcher), that order is picked up on the next refresh.
 
 ## <img src="https://github.com/obervinov/_templates/blob/v1.2.2/icons/requirements.png" width="25" title="install"> Install
@@ -60,6 +74,7 @@ On first start it finds the Steam install of Conan Exiles through the registry a
 | Обновить выбранные / все | Re-download the outdated or broken mods |
 | Привязать к Workshop ID | Turn a hand-dropped `.pak` into a tracked mod |
 | Удалить | Delete the mod files and remove them from `modlist.txt` |
+| Конфликты и порядок… | Conflicts between enabled mods and a suggested load order you can apply in one click |
 | Бэкап в zip… | Save all mod files, `modlist.txt` and `backup.json` (order, on/off, ids) into one archive |
 | `Ctrl+C` / right click | Copy title, Workshop ID, link or file path of the selected mods |
 
