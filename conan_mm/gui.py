@@ -173,6 +173,9 @@ class App(tk.Tk):
             b = ttk.Button(side, text=text, command=cmd)
             b.pack(fill="x", pady=2)
             self.buttons.append(b)
+        self.auto_cache = tk.BooleanVar(value=self.cfg.get("auto_clear_cache", True))
+        ttk.Checkbutton(side, text=t("cache.auto"), variable=self.auto_cache,
+                        command=self._save_auto_cache).pack(anchor="w", pady=(8, 0))
 
         self.logbox = tk.Text(self, height=8, state="disabled", wrap="word", font=("Consolas", 9))
         self.logbox.pack(fill="x", padx=6, pady=6)
@@ -450,6 +453,27 @@ class App(tk.Tk):
         self.game.apply_details(self.details) if self.details else None
         self.redraw()
 
+    def _save_auto_cache(self):
+        self.cfg["auto_clear_cache"] = self.auto_cache.get()
+        self._save_cfg()
+
+    def mods_changed(self):
+        """The set of loaded mods changed: drop the whole game cache so nothing stale survives.
+
+        The game unpacks every enabled mod again on its next start anyway.
+        """
+        if not self.auto_cache.get() or not self.game.cache_entries():
+            return
+        if game_running():
+            self.log(t("cache.skipped_running"))
+            return
+        try:
+            removed, freed = self.game.clear_cache()
+        except OSError as e:
+            self.log(t("log.error", e=e))
+            return
+        self.log(t("cache.auto_done", names=", ".join(removed), mb=freed // 1024 // 1024))
+
     @guarded
     def toggle(self):
         keys = self.selected()
@@ -458,6 +482,7 @@ class App(tk.Tk):
             m.enabled = not m.enabled
         if keys:
             self.game.save()
+            self.mods_changed()
             self.redraw()
 
     @guarded
@@ -480,6 +505,7 @@ class App(tk.Tk):
         for k in keys:
             if self.game.remove(k) == "steam_hint":
                 self.log(t("remove.steam_hint"))
+        self.mods_changed()
         self.redraw()
 
     @guarded
@@ -539,6 +565,8 @@ class App(tk.Tk):
                 finally:
                     steam.SteamCmd.discard(folder)
             game.apply_details(self.details)
+            if folders:
+                self.mods_changed()
 
         self.background(work, then)
 

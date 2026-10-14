@@ -86,6 +86,7 @@ On first start it finds the Steam install of Conan Exiles through the registry a
 | Remove | Delete the mod files and remove them from `modlist.txt` |
 | Conflicts & load order… | Conflicts between enabled mods and a suggested load order you can apply in one click |
 | Clear game mod cache… | Wipe the game's unpacked mods and mod caches (fixes a stale or broken mod cache); the game rebuilds them on the next start |
+| Auto-reset mod cache (checkbox, on by default) | Wipe the whole game mod cache whenever the set of mods changes (install, update, remove, enable/disable), so nothing stale is left; the next game start is slower |
 | Backup to zip… | Save all mod files, `modlist.txt` and `backup.json` (order, on/off, ids) into one archive |
 | ☀ Light / ☾ Dark | Switch between the dark (default) and light themes |
 | Русский / English | Switch the interface language |

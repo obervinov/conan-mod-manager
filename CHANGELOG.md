@@ -3,6 +3,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
 
+## v0.7.0 - 2026-10-14
+#### 🚀 Features
+* **Auto-reset mod cache** (on by default, remembered): whenever the set of loaded mods changes (install, update, remove, enable/disable), the whole game mod cache in `ConanSandbox/Saved` is wiped, so no stale unpacked mod can survive regardless of how the game names its cache entries. Reordering does not trigger it. If the game is running, the reset is skipped with a note in the log. The next game start takes longer while the game unpacks the mods again.
+
 ## v0.6.0 - 2026-10-14
 #### 🚀 Features
 * Cleans the game's own mod cache in `ConanSandbox/Saved`, which the game rebuilds from the `.pak` files:

@@ -100,6 +100,11 @@ STRINGS = {
         "(первый запуск будет дольше). Мир и персонажи не затрагиваются."),
     "cache.empty": ("The game's mod cache is already empty", "Кэш модов игры уже пуст"),
     "cache.done": ("Mod cache cleared: {names} ({mb} MB)", "Кэш модов очищен: {names} ({mb} MB)"),
+    "cache.auto": ("Auto-reset mod cache", "Автосброс кэша модов"),
+    "cache.auto_done": ("Mod set changed, game cache reset: {names} ({mb} MB)",
+                        "Набор модов изменился, кэш игры сброшен: {names} ({mb} MB)"),
+    "cache.skipped_running": ("Game is running: cache reset skipped, run it after closing the game",
+                              "Игра запущена: сброс кэша пропущен, сделай его после выхода из игры"),
     "game.running": ("Close Conan Exiles first: the game is running", "Сначала закрой Conan Exiles: игра запущена"),
     # conflicts dialog
     "conf.title": ("Conflicts and load order", "Конфликты и порядок загрузки"),
