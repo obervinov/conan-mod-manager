@@ -1,7 +1,7 @@
 """Mod state for one Conan Exiles install: what is on disk, what modlist.txt loads, in which order.
 
 Three kinds of mods are handled side by side:
-  managed  - installed by this tool into ConanSandbox/Mods (Steam or pirated copy alike)
+  managed  - installed by this tool into ConanSandbox/Mods (with or without the Steam client)
   steam    - subscribed in the Steam client, live in steamapps/workshop/content/440900
   local    - a .pak dropped into ConanSandbox/Mods by hand, origin unknown until linked to an id
 modlist.txt is the only thing the game reads: listed = enabled, line order = load order.
@@ -214,7 +214,7 @@ class Game:
         """Dumps every mod file + modlist.txt + a self-describing backup.json into one zip.
 
         Layout: Mods/<pak> for managed/local mods, Workshop/<id>/<pak> for Steam ones,
-        so the zip is enough to rebuild the setup on another PC or a non-Steam copy.
+        so the zip is enough to rebuild the setup on another PC.
         """
         log = log or self.log
         dest = Path(dest)

@@ -124,7 +124,7 @@ class GameTest(unittest.TestCase):
                          [("steam:111111", True), ("local:Local.pak", False), ("missing:C:\\gone\\Missing.pak", True)])
         self.assertFalse(Path(str(dest) + ".tmp").exists())
 
-    def test_pirate_layout_without_workshop(self):
+    def test_layout_without_workshop(self):
         root = Path(self.tmp.name) / "Conan Exiles"
         (root / "ConanSandbox" / "Mods").mkdir(parents=True)
         g = Game(root)
