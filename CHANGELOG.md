@@ -3,6 +3,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
 
+## v0.5.0 - 2026-10-14
+#### 🚀 Features
+* English and Russian interface. The default follows the Windows UI language; the **Русский / English** button switches it on the fly (the window is rebuilt, the log is kept) and the choice is remembered.
+* Releases now ship `ConanModManager.exe.sha256`, and the SHA256 is printed in the release notes.
+#### 🔧 Internal
+* Mod statuses and conflict kinds are codes in the logic layer; all user-facing text lives in `conan_mm/i18n.py`. A test checks that every key used in the code exists in both languages with matching placeholders.
+#### 📝 Docs
+* README: English button names, "works with or without the Steam client", a "not affiliated with Funcom or Valve" note, and how to verify the exe checksum.
+
 ## v0.4.0 - 2026-10-13
 #### 🚀 Features
 * Dark theme by default (Windows 11 "Sun Valley" look via `sv-ttk`), switchable to light with the ☀/☾ button; the choice is remembered.

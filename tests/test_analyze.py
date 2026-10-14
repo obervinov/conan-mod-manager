@@ -60,7 +60,7 @@ class AnalyzeTest(unittest.TestCase):
         self.assertEqual((info.version, info.engine, info.error), (4, "UE4", None))
         self.assertIn("systems/t1", info.assets)
         self.assertEqual(info.own, {"big"})
-        self.assertEqual(analyze.compat_issue("UE4", "UE5"), "Legacy-мод: Enhanced его не загрузит")
+        self.assertEqual(analyze.compat_issue("UE4", "UE5"), "legacy_in_enhanced")
         self.assertIsNone(analyze.compat_issue("UE4", None))
 
     def test_conflicts(self):
@@ -91,7 +91,7 @@ class AnalyzeTest(unittest.TestCase):
     def test_garbage_file(self):
         p = Path(self.tmp.name) / "junk.pak"
         p.write_bytes(b"nope" * 100)
-        self.assertIn("сигнатуры", analyze.Scanner().info(p).error)
+        self.assertIn("signature", analyze.Scanner().info(p).error)
 
 
 if __name__ == "__main__":

@@ -10,8 +10,9 @@ import webbrowser
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
-from . import __version__, analyze, steam
+from . import __version__, analyze, i18n, steam
 from .core import Game
+from .i18n import t
 
 try:
     import sv_ttk  # Windows 11 "Sun Valley" ttk theme, light + dark
@@ -24,9 +25,6 @@ PALETTE = {
     "light": {"dim": "#555555", "off": "#999999", "warn": "#b35c00", "bad": "#cc0000", "good": "#008855",
               "text_bg": "#ffffff", "text_fg": "#1c1c1c"},
 }
-
-SOURCE_LABEL = {"managed": "менеджер", "steam": "Steam", "local": "вручную", "missing": "—"}
-
 
 def detect_game_dir():
     """Steam install of Conan Exiles via registry + libraryfolders.vdf (Windows only)."""
@@ -80,10 +78,12 @@ class App(tk.Tk):
         self.scanner = analyze.Scanner()
         self.infos, self.conflicts, self.engine = {}, [], None
         self.steamcmd = steam.SteamCmd(self.data_dir / "steamcmd", log=self.log_threadsafe)
+        self.cfg = self._load_cfg()
+        i18n.set_lang(self.cfg.get("lang") or i18n.system_lang())
+        self.theme = self.cfg.get("theme", "dark")
         self._build()
         self.after(100, self._pump)
-        self.cfg = self._load_cfg()
-        self.apply_theme(self.cfg.get("theme", "dark"))
+        self.apply_theme(self.theme)
         start = self.cfg.get("game_dir") or detect_game_dir()
         if start:
             self.open_game(start)
@@ -93,21 +93,23 @@ class App(tk.Tk):
     def _build(self):
         top = ttk.Frame(self, padding=6)
         top.pack(fill="x")
-        ttk.Label(top, text="Папка игры:").pack(side="left")
-        self.path_var = tk.StringVar(value="не выбрана")
+        ttk.Label(top, text=t("app.game_folder")).pack(side="left")
+        self.path_var = tk.StringVar(value=t("app.not_selected"))
         ttk.Label(top, textvariable=self.path_var, style="Dim.TLabel").pack(side="left", padx=6, fill="x", expand=True)
-        self.theme_btn = ttk.Button(top, text="☀ Светлая", command=self.toggle_theme)
+        ttk.Button(top, text=t("app.other_lang"), command=self.toggle_lang).pack(side="right", padx=(6, 0))
+        self.theme_btn = ttk.Button(top, text=t("app.to_light"), command=self.toggle_theme)
         self.theme_btn.pack(side="right", padx=(6, 0))
-        ttk.Button(top, text="Выбрать…", command=self.pick_game).pack(side="right")
+        ttk.Button(top, text=t("app.pick"), command=self.pick_game).pack(side="right")
 
         mid = ttk.Frame(self, padding=(6, 0))
         mid.pack(fill="both", expand=True)
         cols = ("n", "on", "title", "wid", "src", "eng", "cnf", "status")
         self.tree = ttk.Treeview(mid, columns=cols, show="headings", selectmode="extended")
         for c, text, w, anchor in (
-            ("n", "#", 40, "e"), ("on", "Вкл", 45, "center"), ("title", "Мод", 420, "w"),
-            ("wid", "Workshop ID", 110, "w"), ("src", "Источник", 80, "w"),
-            ("eng", "Движок", 60, "center"), ("cnf", "Конфл.", 55, "center"), ("status", "Статус", 230, "w"),
+            ("n", "#", 40, "e"), ("on", t("col.on"), 45, "center"), ("title", t("col.title"), 420, "w"),
+            ("wid", "Workshop ID", 110, "w"), ("src", t("col.src"), 80, "w"),
+            ("eng", t("col.eng"), 60, "center"), ("cnf", t("col.cnf"), 55, "center"),
+            ("status", t("col.status"), 230, "w"),
         ):
             self.tree.heading(c, text=text)
             self.tree.column(c, width=w, anchor=anchor, stretch=(c == "title"))
@@ -120,12 +122,12 @@ class App(tk.Tk):
         for seq in ("<Control-c>", "<Command-c>"):
             self.tree.bind(seq, lambda e: self.copy("title"))
         self.menu = tk.Menu(self, tearoff=0)
-        self.menu.add_command(label="Копировать название", command=lambda: self.copy("title"))
-        self.menu.add_command(label="Копировать Workshop ID", command=lambda: self.copy("wid"))
-        self.menu.add_command(label="Копировать ссылку", command=lambda: self.copy("url"))
-        self.menu.add_command(label="Копировать путь к файлу", command=lambda: self.copy("path"))
+        self.menu.add_command(label=t("menu.copy_title"), command=lambda: self.copy("title"))
+        self.menu.add_command(label=t("menu.copy_wid"), command=lambda: self.copy("wid"))
+        self.menu.add_command(label=t("menu.copy_url"), command=lambda: self.copy("url"))
+        self.menu.add_command(label=t("menu.copy_path"), command=lambda: self.copy("path"))
         self.menu.add_separator()
-        self.menu.add_command(label="Открыть в Workshop", command=lambda: self.open_page())
+        self.menu.add_command(label=t("btn.open"), command=lambda: self.open_page())
         for seq in ("<Button-3>", "<Button-2>"):
             self.tree.bind(seq, self._popup)
 
@@ -133,23 +135,23 @@ class App(tk.Tk):
         side.pack(side="left", fill="y")
         self.buttons = []
         for text, cmd in (
-            ("Добавить по ID/ссылке", self.add),
-            ("Вкл / выкл", self.toggle),
-            ("▲ Выше", lambda: self.move(-1)),
-            ("▼ Ниже", lambda: self.move(1)),
+            (t("btn.add"), self.add),
+            (t("btn.toggle"), self.toggle),
+            (t("btn.up"), lambda: self.move(-1)),
+            (t("btn.down"), lambda: self.move(1)),
             (None, None),
-            ("Конфликты и порядок…", self.show_conflicts),
+            (t("btn.conflicts"), self.show_conflicts),
             (None, None),
-            ("Проверить обновления", self.check),
-            ("Обновить выбранные", self.update_selected),
-            ("Обновить все", self.update_all),
+            (t("btn.check"), self.check),
+            (t("btn.update_sel"), self.update_selected),
+            (t("btn.update_all"), self.update_all),
             (None, None),
-            ("Привязать к Workshop ID", self.link),
-            ("Открыть в Workshop", self.open_page),
-            ("Удалить", self.remove),
+            (t("btn.link"), self.link),
+            (t("btn.open"), self.open_page),
+            (t("btn.remove"), self.remove),
             (None, None),
-            ("Бэкап в zip…", self.export),
-            ("Перечитать с диска", self.refresh),
+            (t("btn.backup"), self.export),
+            (t("btn.reload"), self.refresh),
         ):
             if text is None:
                 ttk.Separator(side).pack(fill="x", pady=6)
@@ -176,7 +178,7 @@ class App(tk.Tk):
             self.data_dir.mkdir(parents=True, exist_ok=True)
             self.cfg_path.write_text(json.dumps(self.cfg), encoding="utf-8")
         except OSError as e:
-            self.log(f"Не сохранил настройки: {e}")
+            self.log(t("log.cfg_fail", e=e))
 
     # ---------- theme ----------
 
@@ -196,8 +198,8 @@ class App(tk.Tk):
         style.configure("Treeview", rowheight=26 if sv_ttk else 20)
         for w in self._themed_windows():
             dark_titlebar(w, self.theme == "dark")
-        for t in self._themed_texts():
-            t.configure(background=c["text_bg"], foreground=c["text_fg"], insertbackground=c["text_fg"],
+        for box in self._themed_texts():
+            box.configure(background=c["text_bg"], foreground=c["text_fg"], insertbackground=c["text_fg"],
                         relief="flat", highlightthickness=0)
         for tree in self._themed_trees():
             tree.tag_configure("off", foreground=c["off"])
@@ -205,7 +207,7 @@ class App(tk.Tk):
             tree.tag_configure("bad", foreground=c["bad"])
             tree.tag_configure("moved", foreground=c["good"])
         if hasattr(self, "theme_btn"):
-            self.theme_btn.configure(text="☀ Светлая" if self.theme == "dark" else "☾ Тёмная")
+            self.theme_btn.configure(text=t("app.to_light") if self.theme == "dark" else t("app.to_dark"))
 
     def _fallback_theme(self, style, name):
         """Hand-made dark/light palette on top of the stock 'clam' theme."""
@@ -236,20 +238,38 @@ class App(tk.Tk):
         self.cfg["theme"] = self.theme
         self._save_cfg()
 
+    def toggle_lang(self):
+        """Rebuilds the whole window in the other language; the log text is kept."""
+        i18n.set_lang("ru" if i18n.get_lang() == "en" else "en")
+        self.cfg["lang"] = i18n.get_lang()
+        self._save_cfg()
+        log = self.logbox.get("1.0", "end-1c")
+        for w in list(self.winfo_children()):
+            w.destroy()
+        self._build()
+        self.apply_theme(self.theme)
+        self.logbox.configure(state="normal")
+        self.logbox.insert("end", log)
+        self.logbox.see("end")
+        self.logbox.configure(state="disabled")
+        if self.game:
+            self._show_path()
+            self.redraw()
+
     def _themed_windows(self):
         return [self] + [w for w in self.winfo_children() if isinstance(w, tk.Toplevel)]
 
     def _themed_texts(self):
         out = [getattr(self, "logbox", None)]
         out += [w.assets for w in self.winfo_children() if isinstance(w, ConflictsDialog)]
-        return [t for t in out if t is not None]
+        return [w for w in out if w is not None]
 
     def _themed_trees(self):
         out = [getattr(self, "tree", None)]
         for w in self.winfo_children():
             if isinstance(w, ConflictsDialog):
                 out += [w.ctree, w.otree]
-        return [t for t in out if t is not None]
+        return [w for w in out if w is not None]
 
     def log(self, msg):
         self.logbox.configure(state="normal")
@@ -271,7 +291,7 @@ class App(tk.Tk):
                     try:
                         payload()
                     except Exception as e:  # noqa: BLE001 — keep the pump alive
-                        self.log(f"Ошибка: {e}")
+                        self.log(t("log.error", e=e))
                         self.redraw()
         except queue.Empty:
             pass
@@ -295,7 +315,7 @@ class App(tk.Tk):
                 cb = (lambda: then(res)) if then else (lambda: None)
             except Exception as e:  # noqa: BLE001 — every failure goes to the log, not a crash
                 err = e
-                cb = lambda: self.log(f"Ошибка: {err}")
+                cb = lambda: self.log(t("log.error", e=err))
             self.events.put(("done", lambda: (cb(), self.redraw())))
 
         threading.Thread(target=run, daemon=True).start()
@@ -303,12 +323,12 @@ class App(tk.Tk):
     def guarded(fn):
         def wrap(self, *a):
             if self.game is None:
-                messagebox.showinfo("Нет игры", "Сначала выбери папку игры")
+                messagebox.showinfo(t("dlg.no_game_title"), t("dlg.no_game"))
                 return
             try:
                 return fn(self, *a)
             except Exception as e:  # noqa: BLE001
-                self.log(f"Ошибка: {e}")
+                self.log(t("log.error", e=e))
                 self.redraw()
         return wrap
 
@@ -335,13 +355,18 @@ class App(tk.Tk):
             n += m.enabled
             info = self.infos.get(m.key)
             compat = analyze.compat_issue(info.engine, self.engine) if info else None
-            status = compat or (f"не читается: {info.error}" if info and info.error else m.status)
+            if compat:
+                status = t(f"compat.{compat}")
+            elif info and info.error:
+                status = t("status.unreadable", e=info.error)
+            else:
+                status = t(f"status.{m.status}") if m.status else ""
             tags = ("off",) if not m.enabled else ()
-            if (status and status != "актуален") or per_mod.get(m.key):
+            if compat or (info and info.error) or m.status not in ("", "ok") or per_mod.get(m.key):
                 tags += ("warn",)
             self.tree.insert("", "end", iid=m.key, tags=tags, values=(
                 n if m.enabled else "", "✔" if m.enabled else "", m.title, m.wid or "",
-                SOURCE_LABEL[m.source], info.engine if info else "", per_mod.get(m.key, ""), status))
+                t(f"src.{m.source}"), info.engine if info else "", per_mod.get(m.key, ""), status))
         keep = [k for k in sel if self.tree.exists(k)]
         if keep:
             self.tree.selection_set(keep)
@@ -371,7 +396,7 @@ class App(tk.Tk):
         if out:
             self.clipboard_clear()
             self.clipboard_append("\n".join(out))
-            self.log(f"Скопировано: {out[0]}" + (f" (+{len(out) - 1})" if len(out) > 1 else ""))
+            self.log(t("log.copied", first=out[0]) + (f" (+{len(out) - 1})" if len(out) > 1 else ""))
 
     def selected(self):
         return list(self.tree.selection())
@@ -379,7 +404,7 @@ class App(tk.Tk):
     # ---------- actions ----------
 
     def pick_game(self):
-        d = filedialog.askdirectory(title="Папка Conan Exiles (где лежит ConanSandbox)")
+        d = filedialog.askdirectory(title=t("pick.title"))
         if d:
             self.open_game(d)
 
@@ -387,15 +412,17 @@ class App(tk.Tk):
         try:
             self.game = Game(path, log=self.log)
         except Exception as e:  # noqa: BLE001
-            self.log(f"Ошибка: {e}")
+            self.log(t("log.error", e=e))
             return
         self._save_cfg()
-        ws = f" | Workshop: {self.game.workshop_dir}" if self.game.workshop_dir else " | без Steam Workshop"
-        self.path_var.set(f"{self.game.root}{ws}")
+        self._show_path()
         self.engine = analyze.game_engine(self.game)
-        label = {"UE5": "Enhanced (UE5)", "UE4": "Legacy (UE4)"}.get(self.engine, "не определена")
-        self.log(f"Модов найдено: {len(self.game.mods)}. Версия игры: {label}")
+        self.log(t("log.opened", n=len(self.game.mods), ver=t(f"engine.{self.engine or 'unknown'}")))
         self.redraw()
+
+    def _show_path(self):
+        ws = f" | Workshop: {self.game.workshop_dir}" if self.game.workshop_dir else t("app.no_workshop")
+        self.path_var.set(f"{self.game.root}{ws}")
 
     @guarded
     def refresh(self):
@@ -428,12 +455,11 @@ class App(tk.Tk):
         if not keys:
             return
         names = "\n".join(self.game.get(k).title for k in keys)
-        if not messagebox.askyesno("Удалить", f"Удалить файлы модов?\n\n{names}"):
+        if not messagebox.askyesno(t("remove.title"), t("remove.ask", names=names)):
             return
         for k in keys:
-            hint = self.game.remove(k)
-            if hint:
-                self.log(hint)
+            if self.game.remove(k) == "steam_hint":
+                self.log(t("remove.steam_hint"))
         self.redraw()
 
     @guarded
@@ -447,23 +473,22 @@ class App(tk.Tk):
     def link(self):
         keys = self.selected()
         if len(keys) != 1 or self.game.get(keys[0]).source != "local":
-            messagebox.showinfo("Привязка", "Выбери один мод с источником «вручную»")
+            messagebox.showinfo(t("link.title"), t("link.pick_one"))
             return
-        text = simpledialog.askstring("Привязка", "Workshop ID или ссылка на мод:", parent=self)
+        text = simpledialog.askstring(t("link.title"), t("link.ask"), parent=self)
         if not text:
             return
         wid = steam.parse_workshop_id(text)
         self.game.link(keys[0], wid)
-        self.log(f"Привязан к {wid}. «Проверить обновления» покажет, свежий ли файл.")
+        self.log(t("link.done", wid=wid))
         self.redraw()
 
     @guarded
     def add(self):
-        text = simpledialog.askstring(
-            "Добавить мод", "Workshop ID или ссылки (можно несколько через пробел/перенос):", parent=self)
+        text = simpledialog.askstring(t("add.title"), t("add.ask"), parent=self)
         if not text:
             return
-        ids = list(dict.fromkeys(steam.parse_workshop_id(t) for t in re.split(r"[\s,;]+", text) if t))
+        ids = list(dict.fromkeys(steam.parse_workshop_id(x) for x in re.split(r"[\s,;]+", text) if x))
         self.install(ids)
 
     def install(self, ids):
@@ -473,9 +498,10 @@ class App(tk.Tk):
             details = steam.fetch_details(ids)
             bad = [i for i in ids if not details.get(i, {}).get("ok")]
             if bad:
-                raise RuntimeError(f"Не моды Conan Exiles или недоступны: {', '.join(bad)}")
+                raise RuntimeError(t("add.not_conan", ids=", ".join(bad)))
             for i in ids:
-                self.log_threadsafe(f"Качаю {details[i]['title']} ({details[i]['file_size'] // 1024 // 1024} MB)")
+                self.log_threadsafe(t("log.downloading", title=details[i]["title"],
+                                      mb=details[i]["file_size"] // 1024 // 1024))
             folders = self.steamcmd.download(ids)
             return details, folders
 
@@ -485,9 +511,9 @@ class App(tk.Tk):
             for wid, folder in folders.items():
                 try:
                     m = game.install(wid, folder, details[wid])
-                    self.log(f"Установлен: {m.title} → {', '.join(f.name for f in m.files)}")
+                    self.log(t("log.installed", title=m.title, files=", ".join(f.name for f in m.files)))
                 except Exception as e:  # noqa: BLE001 — one broken mod must not stop the rest
-                    self.log(f"Ошибка: {e}")
+                    self.log(t("log.error", e=e))
                 finally:
                     steam.SteamCmd.discard(folder)
             game.apply_details(self.details)
@@ -498,15 +524,15 @@ class App(tk.Tk):
     def export(self):
         name = time.strftime("ConanMods-%Y%m%d-%H%M.zip")
         dest = filedialog.asksaveasfilename(
-            title="Сохранить бэкап модов", initialfile=name, defaultextension=".zip",
+            title=t("backup.title"), initialfile=name, defaultextension=".zip",
             filetypes=[("Zip", "*.zip")])
         if not dest:
             return
         game = self.game
-        self.log(f"Бэкап → {dest}")
+        self.log(t("backup.start", dest=dest))
         self.background(
             lambda: game.export_zip(dest, log=self.log_threadsafe),
-            lambda total: self.log(f"Бэкап готов: {len(game.mods)} модов, {total // 1024 // 1024} MB → {dest}"))
+            lambda total: self.log(t("backup.done", n=len(game.mods), mb=total // 1024 // 1024, dest=dest)))
 
     @guarded
     def show_conflicts(self):
@@ -516,14 +542,14 @@ class App(tk.Tk):
     def check(self):
         ids = [m.wid for m in self.game.mods if m.wid]
         if not ids:
-            self.log("Нет модов с Workshop ID — нечего проверять")
+            self.log(t("check.none"))
             return
 
         def then(details):
             self.details = details
             self.game.apply_details(details)
-            n = sum(m.status == "есть обнова" for m in self.game.mods)
-            self.log(f"Проверено {len(ids)}, обновлений: {n}")
+            n = sum(m.status == "update" for m in self.game.mods)
+            self.log(t("check.done", n=len(ids), u=n))
 
         self.background(lambda: steam.fetch_details(ids), then)
 
@@ -531,15 +557,15 @@ class App(tk.Tk):
     def update_selected(self):
         ids = [self.game.get(k).wid for k in self.selected() if self.game.get(k).source == "managed"]
         if not ids:
-            self.log("Обновлять можно только моды с источником «менеджер» (Steam обновляет свои сам)")
+            self.log(t("update.only_managed"))
             return
         self.install(ids)
 
     @guarded
     def update_all(self):
-        ids = [m.wid for m in self.game.mods if m.source == "managed" and m.status in ("есть обнова", "размер не совпал", "файлы пропали")]
+        ids = [m.wid for m in self.game.mods if m.source == "managed" and m.status in ("update", "size_mismatch", "missing_files")]
         if not ids:
-            self.log("Нечего обновлять. Сначала «Проверить обновления».")
+            self.log(t("update.nothing"))
             return
         self.install(ids)
 
@@ -548,20 +574,19 @@ class ConflictsDialog(tk.Toplevel):
     def __init__(self, app):
         super().__init__(app)
         self.app = app
-        self.title("Конфликты и порядок загрузки")
+        self.title(t("conf.title"))
         self.geometry("900x620")
         self.transient(app)
 
         self.summary = ttk.Label(self, padding=6)
         self.summary.pack(fill="x")
-        hint = ("Побеждает мод ниже в списке. Порядок: патчи — под модом, который они правят; "
-                "узкие правки — под крупными модами. Enhanced-моды (UE5) упакованы иначе — их файлы не сравниваются.")
-        ttk.Label(self, text=hint, style="Dim.TLabel", wraplength=870, padding=(6, 0)).pack(fill="x")
+        ttk.Label(self, text=t("conf.hint"), style="Dim.TLabel", wraplength=870, padding=(6, 0)).pack(fill="x")
 
         top = ttk.Frame(self, padding=6)
         top.pack(fill="both", expand=True)
         self.ctree = ttk.Treeview(top, columns=("kind", "win", "lose", "n"), show="headings", height=8)
-        for c, text, w in (("kind", "Тип", 220), ("win", "Побеждает (ниже)", 260), ("lose", "Перекрыт", 260), ("n", "Файлов", 70)):
+        for c, text, w in (("kind", t("conf.col_kind"), 220), ("win", t("conf.col_win"), 260),
+                           ("lose", t("conf.col_lose"), 260), ("n", t("conf.col_n"), 70)):
             self.ctree.heading(c, text=text)
             self.ctree.column(c, width=w, stretch=c in ("win", "lose"))
         self.ctree.pack(fill="both", expand=True)
@@ -569,18 +594,18 @@ class ConflictsDialog(tk.Toplevel):
         self.assets = tk.Text(top, height=6, wrap="none", font=("Consolas", 9), state="disabled")
         self.assets.pack(fill="x", pady=(6, 0))
 
-        bottom = ttk.LabelFrame(self, text="Предложенный порядок (только включённые моды)", padding=6)
+        bottom = ttk.LabelFrame(self, text=t("conf.order_frame"), padding=6)
         bottom.pack(fill="both", expand=True, padx=6)
         self.otree = ttk.Treeview(bottom, columns=("n", "now", "new"), show="headings", height=8)
-        for c, text, w in (("n", "#", 40), ("now", "Сейчас", 380), ("new", "Предложено", 380)):
+        for c, text, w in (("n", "#", 40), ("now", t("conf.col_now"), 380), ("new", t("conf.col_new"), 380)):
             self.otree.heading(c, text=text)
             self.otree.column(c, width=w, stretch=c != "n")
         self.otree.pack(fill="both", expand=True)
         btns = ttk.Frame(self, padding=6)
         btns.pack(fill="x")
-        self.apply_btn = ttk.Button(btns, text="Применить порядок", command=self.apply)
+        self.apply_btn = ttk.Button(btns, text=t("conf.apply"), command=self.apply)
         self.apply_btn.pack(side="right")
-        ttk.Button(btns, text="Закрыть", command=self.destroy).pack(side="right", padx=6)
+        ttk.Button(btns, text=t("conf.close"), command=self.destroy).pack(side="right", padx=6)
         app.apply_theme(app.theme)
         self.refresh()
 
@@ -598,7 +623,7 @@ class ConflictsDialog(tk.Toplevel):
         for i, c in enumerate(app.conflicts):
             wrong = c.kind == "patch" and pos[c.winner] < pos[c.loser]
             bad += wrong
-            label = analyze.KIND_LABEL[c.kind] + (" — патч выше мода!" if wrong else "")
+            label = t(f"kind.{c.kind}") + (t("conf.patch_above") if wrong else "")
             iid = str(i)
             self.by_iid[iid] = c
             self.ctree.insert("", "end", iid=iid, tags=("bad",) if wrong or c.kind == "duplicate" else (),
@@ -606,10 +631,10 @@ class ConflictsDialog(tk.Toplevel):
         unread = sum(1 for m in enabled if app.infos.get(m.key) and app.infos[m.key].error)
         ue5 = sum(1 for m in enabled if app.infos.get(m.key) and app.infos[m.key].engine == "UE5")
         self.summary.configure(text=(
-            f"Включено модов: {len(enabled)}. Конфликтов: {len(app.conflicts)}"
-            + (f", патчей не на месте: {bad}" if bad else "")
-            + (f". Без проверки файлов (UE5): {ue5}" if ue5 else "")
-            + (f". Не прочитано: {unread}" if unread else "")))
+            t("conf.summary", n=len(enabled), c=len(app.conflicts))
+            + (t("conf.bad", n=bad) if bad else "")
+            + (t("conf.ue5", n=ue5) if ue5 else "")
+            + (t("conf.unread", n=unread) if unread else "")))
 
         self.suggested = analyze.suggest_order(enabled, app.infos, app.conflicts)
         self.otree.delete(*self.otree.get_children())
@@ -618,7 +643,7 @@ class ConflictsDialog(tk.Toplevel):
                               values=(i, m.title, self._title(key)))
         changed = [m.key for m in enabled] != self.suggested
         self.apply_btn.state(["!disabled"] if changed else ["disabled"])
-        self.apply_btn.configure(text="Применить порядок" if changed else "Порядок уже оптимален")
+        self.apply_btn.configure(text=t("conf.apply") if changed else t("conf.optimal"))
 
     def _show_assets(self, _):
         sel = self.ctree.selection()
@@ -636,7 +661,7 @@ class ConflictsDialog(tk.Toplevel):
         for i, key in zip(slots, self.suggested):
             game.mods[i] = by_key[key]
         game.save()
-        self.app.log("Применён предложенный порядок загрузки")
+        self.app.log(t("log.order_applied"))
         self.app.redraw()
         self.refresh()
 

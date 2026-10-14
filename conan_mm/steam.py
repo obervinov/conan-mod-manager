@@ -12,6 +12,8 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
+from .i18n import t
+
 APP_ID = 440900  # Conan Exiles (workshop items)
 DETAILS_URL = "https://api.steampowered.com/ISteamRemoteStorage/GetPublishedFileDetails/v1/"
 STEAMCMD_URLS = {
@@ -27,7 +29,7 @@ def parse_workshop_id(text):
     """Accepts a bare id or any workshop URL (…?id=123456789)."""
     m = _ID_RE.search(text.strip())
     if not m:
-        raise ValueError(f"Не похоже на workshop id / ссылку: {text!r}")
+        raise ValueError(t("steam.bad_id", text=repr(text)))
     return m.group(1)
 
 
@@ -80,14 +82,14 @@ class SteamCmd:
         if self.exe.exists():
             return
         url = STEAMCMD_URLS["win32" if sys.platform == "win32" else sys.platform]
-        self.log(f"Скачиваю steamcmd: {url}")
+        self.log(t("steam.get_cmd", url=url))
         self.root.mkdir(parents=True, exist_ok=True)
         data = urllib.request.urlopen(url, timeout=120).read()
         if url.endswith(".zip"):
             zipfile.ZipFile(io.BytesIO(data)).extractall(self.root)
         else:
             tarfile.open(fileobj=io.BytesIO(data)).extractall(self.root)
-        self.log("steamcmd установлен")
+        self.log(t("steam.cmd_ready"))
 
     def _run(self, ids):
         args = [str(self.exe), "+login", "anonymous"]
@@ -124,12 +126,12 @@ class SteamCmd:
             if not pending:
                 break
             if attempt > 1:
-                self.log(f"Повтор {attempt}/{retries}: {', '.join(pending)}")
+                self.log(t("steam.retry", a=attempt, n=retries, ids=", ".join(pending)))
             got = self._run(pending)
             result.update(got)
             pending = [i for i in pending if i not in got]
         if pending:
-            raise RuntimeError(f"steamcmd не скачал: {', '.join(pending)}")
+            raise RuntimeError(t("steam.failed", ids=", ".join(pending)))
         return result
 
     @staticmethod

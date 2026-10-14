@@ -38,14 +38,6 @@ class Conflict:
     assets: list = field(default_factory=list)
 
 
-KIND_LABEL = {
-    "override": "оба меняют файлы игры",
-    "patch": "патч поверх другого мода",
-    "shared": "разные версии общей библиотеки",
-    "duplicate": "один и тот же мод дважды",
-}
-
-
 def normalize(path):
     p = path.replace("\\", "/").lower()
     p = _COOKED.sub("", p)
@@ -131,8 +123,8 @@ def compat_issue(mod_engine, engine):
     if not engine or mod_engine == "?" or mod_engine == engine:
         return None
     if engine == "UE5":
-        return "Legacy-мод: Enhanced его не загрузит"
-    return "мод для Enhanced: эта версия игры не загрузит"
+        return "legacy_in_enhanced"
+    return "enhanced_in_legacy"
 
 
 def find_conflicts(mods, infos):

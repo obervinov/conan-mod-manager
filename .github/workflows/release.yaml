@@ -24,15 +24,20 @@ jobs:
         run: |
           python -m pip install pyinstaller==6.11.1 -r requirements.txt
           python -m PyInstaller --noconfirm --onefile --windowed --name ConanModManager --collect-data sv_ttk main.py
-      - name: Smoke check
+      - name: Smoke check and SHA256
         shell: pwsh
         run: |
           $exe = Get-Item dist/ConanModManager.exe
           "{0} {1:N1} MB" -f $exe.Name, ($exe.Length / 1MB)
+          $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLower()
+          "$hash  ConanModManager.exe" | Set-Content -NoNewline -Encoding ascii dist/ConanModManager.exe.sha256
+          "SHA256 $hash"
       - uses: actions/upload-artifact@v4
         with:
           name: ConanModManager
-          path: dist/ConanModManager.exe
+          path: |
+            dist/ConanModManager.exe
+            dist/ConanModManager.exe.sha256
       - name: Publish release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
@@ -40,5 +45,10 @@ jobs:
         shell: bash
         run: |
           notes=$(awk -v v="## ${GITHUB_REF_NAME}" '$0 ~ "^"v {f=1; next} /^## v/ {f=0} f' CHANGELOG.md)
-          gh release create "$GITHUB_REF_NAME" dist/ConanModManager.exe \
-            --title "$GITHUB_REF_NAME" --notes "${notes:-Release $GITHUB_REF_NAME}"
+          hash=$(cut -d' ' -f1 dist/ConanModManager.exe.sha256)
+          notes="${notes:-Release $GITHUB_REF_NAME}
+
+          #### 🔒 Checksum
+          \`ConanModManager.exe\` SHA256: \`${hash}\`"
+          gh release create "$GITHUB_REF_NAME" dist/ConanModManager.exe dist/ConanModManager.exe.sha256 \
+            --title "$GITHUB_REF_NAME" --notes "$notes"

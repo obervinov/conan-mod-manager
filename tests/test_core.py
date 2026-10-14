@@ -82,7 +82,7 @@ class GameTest(unittest.TestCase):
 
         self.game.apply_details({"880454836": {"ok": True, "title": "Pippi", "time_updated": 200, "file_size": 7},
                                  "111111": {"ok": True, "title": "Steam One", "time_updated": 1, "file_size": 10}})
-        self.assertEqual(self.game.get("ws:880454836").status, "есть обнова")
+        self.assertEqual(self.game.get("ws:880454836").status, "update")
         self.assertEqual(self.game.get("steam:111111").title, "Steam One")
 
         # new version renamed its pak: the old file must go
@@ -99,7 +99,7 @@ class GameTest(unittest.TestCase):
 
     def test_remove_steam_only_disables(self):
         hint = self.game.remove("steam:111111")
-        self.assertIn("отпишись", hint)
+        self.assertEqual(hint, "steam_hint")
         self.assertTrue((self.ws / "SteamMod.pak").exists())
         self.assertFalse(self.game.get("steam:111111").enabled)
 

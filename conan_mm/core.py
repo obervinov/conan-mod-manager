@@ -14,6 +14,8 @@ import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .i18n import t
+
 MANIFEST = "conan-mod-manager.json"
 MODLIST = "modlist.txt"
 
@@ -28,7 +30,7 @@ def find_game_root(picked):
     for cand in (p, p.parent, p.parent.parent):
         if (cand / "ConanSandbox").is_dir():
             return cand
-    raise ValueError(f"В {p} нет папки ConanSandbox — укажи папку игры")
+    raise ValueError(t("core.no_sandbox", p=p))
 
 
 @dataclass
@@ -40,7 +42,7 @@ class Mod:
     wid: str = None
     enabled: bool = False
     installed_at: int = 0  # workshop time_updated of the installed copy
-    status: str = ""
+    status: str = ""  # code: ok | update | steam_updates | size_mismatch | missing_files | no_file | not_in_workshop
     raw_line: str = None  # modlist line we could not resolve (missing)
 
     @property
@@ -101,7 +103,7 @@ class Game:
             backup = self.modlist_path.with_name(MODLIST + ".bak")
             if not backup.exists():
                 shutil.copy2(self.modlist_path, backup)
-                self.log(f"Бэкап исходного modlist: {backup.name}")
+                self.log(t("core.backup", name=backup.name))
         lines = []
         for m in self.mods:
             if not m.enabled:
@@ -127,7 +129,7 @@ class Game:
             m = Mod(f"ws:{wid}", "managed", info.get("title") or f"#{wid}", files, wid,
                     installed_at=int(info.get("time_updated") or 0))
             if not any(f.exists() for f in files):
-                m.status = "файлы пропали"
+                m.status = "missing_files"
             found[m.key] = m
 
         if self.workshop_dir:
@@ -149,7 +151,7 @@ class Game:
             m = by_file.get(_norm(self._resolve_line(line)))
             if m is None:
                 missing.append(Mod(f"missing:{line}", "missing", Path(line.lstrip("*")).name,
-                                   enabled=True, raw_line=line, status="нет файла"))
+                                   enabled=True, raw_line=line, status="no_file"))
                 continue
             m.enabled = True
             if m not in enabled_order:
@@ -179,16 +181,16 @@ class Game:
         self.save()
 
     def remove(self, key):
-        """Deletes a mod completely. Returns a hint for what the tool could not do itself."""
+        """Deletes a mod completely. Returns "steam_hint" when only disabling was possible."""
         m = self.get(key)
         if m.source == "steam":
             m.enabled = False
             self.save()
-            return "Мод из подписки Steam: выключен. Чтобы удалить файлы — отпишись в Workshop, Steam сотрёт сам."
+            return "steam_hint"
         for f in m.files:
             if f.exists():
                 f.unlink()
-                self.log(f"Удалён {f.name}")
+                self.log(t("core.deleted", name=f.name))
         if m.source == "managed":
             self.manifest["mods"].pop(m.wid, None)
         self.mods.remove(m)
@@ -199,9 +201,9 @@ class Game:
         """Turns a hand-dropped .pak into a managed mod so updates can be tracked."""
         m = self.get(key)
         if m.source != "local":
-            raise ValueError("Привязать к id можно только локальный .pak")
+            raise ValueError(t("core.link_local_only"))
         if wid in self.manifest["mods"]:
-            raise ValueError(f"Мод {wid} уже установлен")
+            raise ValueError(t("core.already", wid=wid))
         self.manifest["mods"][wid] = {"title": title or m.title, "files": [m.files[0].name], "time_updated": 0}
         idx = self.mods.index(m)
         m.key, m.source, m.wid, m.title = f"ws:{wid}", "managed", wid, title or m.title
@@ -243,11 +245,11 @@ class Game:
         """Moves freshly downloaded paks from steamcmd's folder into ConanSandbox/Mods."""
         paks = sorted(Path(folder).rglob("*.pak"))
         if not paks:
-            raise RuntimeError(f"В моде {wid} нет .pak файлов")
+            raise RuntimeError(t("core.no_paks", wid=wid))
         others = {name for k, info in self.manifest["mods"].items() if k != wid for name in info["files"]}
         clash = [p.name for p in paks if p.name in others]
         if clash:
-            raise RuntimeError(f"{wid}: файл {clash[0]} уже принадлежит другому моду")
+            raise RuntimeError(t("core.clash", wid=wid, name=clash[0]))
         old = set(self.manifest["mods"].get(wid, {}).get("files", []))
         for p in paks:
             shutil.copy2(p, self.mods_dir / p.name)
@@ -281,19 +283,19 @@ class Game:
             if m.source in ("local", "missing"):
                 continue
             if not d or not d["ok"]:
-                m.status = "нет в Workshop"
+                m.status = "not_in_workshop"
                 continue
             if m.source == "steam":
                 titles[m.wid] = d["title"]
             m.title = d["title"]
-            if m.status == "файлы пропали":
+            if m.status == "missing_files":
                 continue
             if d["time_updated"] > m.installed_at:
-                m.status = "есть обнова" if m.source == "managed" else "Steam обновит сам"
+                m.status = "update" if m.source == "managed" else "steam_updates"
             elif m.source == "managed" and d["file_size"] and m.size != d["file_size"]:
-                m.status = "размер не совпал"
+                m.status = "size_mismatch"
             else:
-                m.status = "актуален"
+                m.status = "ok"
         for m in self.mods:
             if m.source == "managed":
                 self.manifest["mods"][m.wid]["title"] = m.title

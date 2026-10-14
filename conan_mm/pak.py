@@ -8,6 +8,8 @@ Only the footer and the index are read, so a 2 GB mod costs a few hundred KB of 
 import os
 import struct
 
+from .i18n import t
+
 MAGIC = 0x5A6F12E1
 UE5_MIN_VERSION = 10  # first version with the path-hash/directory index (UE4.26+, all UE5)
 
@@ -47,11 +49,11 @@ def _footer(f, size):
     tail = f.read(tail_len)
     i = tail.rfind(struct.pack("<I", MAGIC))
     if i < 0:
-        raise PakError("не pak: нет сигнатуры")
+        raise PakError(t("pak.no_magic"))
     _, version, offset, idx_size = struct.unpack_from("<IiQQ", tail, i)
     encrypted = version >= 7 and tail[i - 1] == 1
     if not (0 < offset < size and 0 < idx_size <= size - offset):
-        raise PakError(f"битый футер (v{version})")
+        raise PakError(t("pak.bad_footer", v=version))
     return version, offset, idx_size, encrypted
 
 
@@ -75,7 +77,7 @@ def _legacy_entries(r, version, count, extra):
             r.skip(1 + 4)  # encrypted flag, compression block size
         r.skip(extra)
         if not name or not name.isprintable():
-            raise PakError("неверная разметка записи")
+            raise PakError(t("pak.bad_entry"))
         out[name] = sha1
     return out
 
@@ -90,7 +92,7 @@ def _legacy_any(r, version, count):
             continue
         if r.p <= len(r.d):
             return files
-    raise PakError(f"незнакомая разметка индекса v{version}")
+    raise PakError(t("pak.unknown_layout", v=version))
 
 
 def _directory_entries(f, r):
@@ -99,7 +101,7 @@ def _directory_entries(f, r):
     if r.take("<i"):
         r.skip(8 + 8 + 20)  # path hash index: we only need names
     if not r.take("<i"):
-        raise PakError("в pak нет полного списка файлов")
+        raise PakError(t("pak.no_dir"))
     off, size = r.take("<QQ")
     f.seek(off)
     dr = _Reader(f.read(size))
@@ -119,7 +121,7 @@ def read_index(path):
     with open(path, "rb") as f:
         version, offset, idx_size, encrypted = _footer(f, size)
         if encrypted:
-            raise PakError("индекс зашифрован")
+            raise PakError(t("pak.encrypted"))
         f.seek(offset)
         r = _Reader(f.read(idx_size))
         try:
@@ -130,7 +132,7 @@ def read_index(path):
             else:
                 files = _legacy_any(r, version, count)
         except struct.error as e:
-            raise PakError(f"не смог разобрать индекс v{version}: {e}") from None
+            raise PakError(t("pak.parse", v=version, e=e)) from None
     mount = mount.replace("../../../", "")
     files = {_join(mount, k): v for k, v in files.items()}
     return {"version": version, "mount": mount, "files": files}

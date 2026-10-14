@@ -26,7 +26,10 @@ A small single-exe Windows app to keep Conan Exiles mods in order **without star
 - back up the whole mod setup into one zip
 - see conflicts between mods, Legacy/Enhanced mismatches, and get a suggested load order
 
-It works for both the Steam version and non-Steam copies. Downloads go through an anonymous `steamcmd`, so it needs no Steam login and no game ownership.
+It works with or without the Steam client: downloads go through an anonymous `steamcmd`, so no Steam login is needed. The interface is in English and Russian (picked from the Windows language, switchable in the app), with dark and light themes.
+
+> [!NOTE]
+> This is a fan-made tool. It is not affiliated with or endorsed by Funcom or Valve. Conan Exiles is a trademark of its respective owners.
 
 ## <img src="https://github.com/obervinov/_templates/blob/v1.2.2/icons/stack2.png" width="25" title="architecture"> How it works
 | Piece | What it does |
@@ -40,9 +43,9 @@ The mod list combines three sources:
 
 | Source | Where the files live | Install / update | Remove |
 | --- | --- | --- | --- |
-| **менеджер** | `ConanSandbox/Mods` | by this app | deletes the files |
+| **manager** | `ConanSandbox/Mods` | by this app | deletes the files |
 | **Steam** | `steamapps/workshop/content/440900/<id>` | by the Steam client | unsubscribe in Workshop (the app only disables it) |
-| **вручную** | `.pak` dropped into `ConanSandbox/Mods` by hand | after *Привязать к Workshop ID* | deletes the file |
+| **manual** | `.pak` dropped into `ConanSandbox/Mods` by hand | after *Link to Workshop ID* | deletes the file |
 
 ### Conflicts and load order
 Only the index of every `.pak` is read (footer + file list, a few hundred KB even for a 2 GB mod). Asset paths are sorted into three groups:
@@ -55,28 +58,35 @@ Only the index of every `.pak` is read (footer + file list, a few hundred KB eve
 
 The suggested order puts patches under the mod they patch and narrow tweaks under broad overhauls, and leaves everything else where it was.
 
-The `Движок` column shows UE4 (Legacy) or UE5 (Enhanced) from the pak format version. A mod built for the other engine is flagged, because Enhanced silently skips Legacy mods. Enhanced mods are containers of IoStore packages, so for them only the engine is checked.
+The `Engine` column shows UE4 (Legacy) or UE5 (Enhanced) from the pak format version. A mod built for the other engine is flagged, because Enhanced silently skips Legacy mods. Enhanced mods are containers of IoStore packages, so for them only the engine is checked.
 
 If `modlist.txt` is edited by hand (or by the game launcher), that order is picked up on the next refresh.
 
 ## <img src="https://github.com/obervinov/_templates/blob/v1.2.2/icons/requirements.png" width="25" title="install"> Install
 Download `ConanModManager.exe` from the [latest release](https://github.com/obervinov/conan-mod-manager/releases/latest) and run it. It has no installer and needs no Python.
 
-On first start it finds the Steam install of Conan Exiles through the registry and `libraryfolders.vdf`. For a non-Steam copy, click **Выбрать…** and pick the game folder (the one that contains `ConanSandbox`).
+The exe is not code-signed, so Windows SmartScreen may warn about an unknown publisher (**More info → Run anyway**). Each release lists the exe's SHA256; to check your download, run:
+
+```powershell
+Get-FileHash .\ConanModManager.exe -Algorithm SHA256
+```
+
+On first start it finds the Steam install of Conan Exiles through the registry and `libraryfolders.vdf`. Otherwise click **Browse…** and pick the game folder (the one that contains `ConanSandbox`).
 
 ## <img src="https://github.com/obervinov/_templates/blob/v1.2.2/icons/build.png" width="25" title="usage"> Usage
 | Button | Action |
 | --- | --- |
-| Добавить по ID/ссылке | Paste one or more Workshop IDs / URLs; they are downloaded, installed, and enabled at the end of the list |
-| Вкл / выкл (or double-click / Space) | Toggle the selected mods |
-| ▲ Выше / ▼ Ниже | Change the load order |
-| Проверить обновления | Compare installed versions with Workshop |
-| Обновить выбранные / все | Re-download the outdated or broken mods |
-| Привязать к Workshop ID | Turn a hand-dropped `.pak` into a tracked mod |
-| Удалить | Delete the mod files and remove them from `modlist.txt` |
-| Конфликты и порядок… | Conflicts between enabled mods and a suggested load order you can apply in one click |
-| Бэкап в zip… | Save all mod files, `modlist.txt` and `backup.json` (order, on/off, ids) into one archive |
-| ☀ Светлая / ☾ Тёмная | Switch between the dark (default) and light themes |
+| Add by ID / link | Paste one or more Workshop IDs / URLs; they are downloaded, installed, and enabled at the end of the list |
+| Enable / disable (or double-click / Space) | Toggle the selected mods |
+| ▲ Up / ▼ Down | Change the load order |
+| Check for updates | Compare installed versions with Workshop |
+| Update selected / Update all | Re-download the outdated or broken mods |
+| Link to Workshop ID | Turn a hand-dropped `.pak` into a tracked mod |
+| Remove | Delete the mod files and remove them from `modlist.txt` |
+| Conflicts & load order… | Conflicts between enabled mods and a suggested load order you can apply in one click |
+| Backup to zip… | Save all mod files, `modlist.txt` and `backup.json` (order, on/off, ids) into one archive |
+| ☀ Light / ☾ Dark | Switch between the dark (default) and light themes |
+| Русский / English | Switch the interface language |
 | `Ctrl+C` / right click | Copy title, Workshop ID, link or file path of the selected mods |
 
 > [!WARNING]
