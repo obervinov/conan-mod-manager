@@ -1,0 +1,31 @@
+---
+name: PR
+
+on:  # yamllint disable-line rule:truthy
+  push:
+    branches: ['*', '*/*', '**', '!main']
+
+# A reusable workflow can never hold more than the caller grants it.
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+  checks: read
+
+jobs:
+  pr:
+    uses: obervinov/_templates/.github/workflows/pr.yaml@v4.3.0
+
+  tests:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Unit tests
+        run: python -m unittest -v
+
+  build-exe:
+    needs: [tests]
+    uses: obervinov/_templates/.github/workflows/python-windows-exe.yaml@v4.3.0

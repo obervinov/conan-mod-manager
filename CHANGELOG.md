@@ -3,6 +3,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
 
+## v0.7.1 - 2026-10-14
+#### 📚 Documentation
+* CI/CD moved to `obervinov/_templates`: `pr.yaml` (pull request from `CHANGELOG.md`, version and date checks), `release.yaml` (tag and release on merge, no manual `git tag` any more) and the new `python-windows-exe.yaml` (exe + `SHA256SUMS` attached to the release). Unit tests on `windows-latest` stay a local job. `ConanModManager.spec` now holds the build settings; the checksum ships as `SHA256SUMS` instead of `ConanModManager.exe.sha256`.
+* Repository housekeeping: `CODEOWNERS`, pull request and issue templates (bug report asks for the app log and game edition), Dependabot for pip and GitHub Actions, labels `python`, `github_actions`, `dependencies`, `compatibility`.
+
 ## v0.7.0 - 2026-10-14
 #### 🚀 Features
 * **Auto-reset mod cache** (on by default, remembered): whenever the set of loaded mods changes (install, update, remove, enable/disable), the whole game mod cache in `ConanSandbox/Saved` is wiped, so no stale unpacked mod can survive regardless of how the game names its cache entries. Reordering does not trigger it. If the game is running, the reset is skipped with a note in the log. The next game start takes longer while the game unpacks the mods again.
