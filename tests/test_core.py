@@ -141,9 +141,9 @@ class GameTest(unittest.TestCase):
 
     def test_extracted_matching(self):
         saved, ex = self._saved()
-        names = sorted(str(p.relative_to(ex)) for p in self.game.extracted_for(["Pippi.pak"]))
+        names = sorted(p.relative_to(ex).as_posix() for p in self.game.extracted_for(["Pippi.pak"]))
         self.assertEqual(names, ["Pippi-Windows.utoc", "Pippi.pak"])  # not Pippi_Extras
-        names = sorted(str(p.relative_to(ex)) for p in self.game.extracted_for(["local.pak"]))
+        names = sorted(p.relative_to(ex).as_posix() for p in self.game.extracted_for(["local.pak"]))
         self.assertEqual(names, ["Local", "nested/Local-Windows.ucas"])
 
     def test_remove_and_update_purge_cache(self):
