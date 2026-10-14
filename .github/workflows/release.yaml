@@ -15,9 +15,9 @@ permissions:
 jobs:
   create-release:
     if: github.event.pull_request.merged == true
-    uses: obervinov/_templates/.github/workflows/release.yaml@feat/python-windows-exe
+    uses: obervinov/_templates/.github/workflows/release.yaml@v4.3.0
 
   attach-exe:
     needs: [create-release]
     if: github.event.pull_request.merged == true && needs.create-release.outputs.released == 'true'
-    uses: obervinov/_templates/.github/workflows/python-windows-exe.yaml@feat/python-windows-exe
+    uses: obervinov/_templates/.github/workflows/python-windows-exe.yaml@v4.3.0

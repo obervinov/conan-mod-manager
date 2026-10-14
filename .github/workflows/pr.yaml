@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   pr:
-    uses: obervinov/_templates/.github/workflows/pr.yaml@feat/python-windows-exe
+    uses: obervinov/_templates/.github/workflows/pr.yaml@v4.3.0
 
   tests:
     runs-on: windows-latest
@@ -28,4 +28,4 @@ jobs:
 
   build-exe:
     needs: [tests]
-    uses: obervinov/_templates/.github/workflows/python-windows-exe.yaml@feat/python-windows-exe
+    uses: obervinov/_templates/.github/workflows/python-windows-exe.yaml@v4.3.0
