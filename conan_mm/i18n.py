@@ -41,6 +41,7 @@ STRINGS = {
     "btn.remove": ("Remove", "Удалить"),
     "btn.backup": ("Backup to zip…", "Бэкап в zip…"),
     "btn.reload": ("Reload from disk", "Перечитать с диска"),
+    "btn.clear_cache": ("Clear game mod cache…", "Очистить кэш модов игры…"),
     # statuses (codes come from core / analyze)
     "status.ok": ("up to date", "актуален"),
     "status.update": ("update available", "есть обнова"),
@@ -91,6 +92,15 @@ STRINGS = {
                             "Обновлять можно только моды с источником «менеджер» (Steam обновляет свои сам)"),
     "update.nothing": ("Nothing to update. Run “Check for updates” first.",
                        "Нечего обновлять. Сначала «Проверить обновления»."),
+    "cache.title": ("Clear game mod cache", "Очистить кэш модов игры"),
+    "cache.ask": (
+        "Delete these from ConanSandbox\\Saved?\n\n{names}\n\nThe game unpacks the mods again on the next start "
+        "(the first start takes longer). Your world and characters are not touched.",
+        "Удалить из ConanSandbox\\Saved?\n\n{names}\n\nИгра заново распакует моды при следующем запуске "
+        "(первый запуск будет дольше). Мир и персонажи не затрагиваются."),
+    "cache.empty": ("The game's mod cache is already empty", "Кэш модов игры уже пуст"),
+    "cache.done": ("Mod cache cleared: {names} ({mb} MB)", "Кэш модов очищен: {names} ({mb} MB)"),
+    "game.running": ("Close Conan Exiles first: the game is running", "Сначала закрой Conan Exiles: игра запущена"),
     # conflicts dialog
     "conf.title": ("Conflicts and load order", "Конфликты и порядок загрузки"),
     "conf.hint": (
@@ -127,6 +137,7 @@ STRINGS = {
     "core.already": ("Mod {wid} is already installed", "Мод {wid} уже установлен"),
     "core.no_paks": ("Mod {wid} has no .pak files", "В моде {wid} нет .pak файлов"),
     "core.clash": ("{wid}: file {name} already belongs to another mod", "{wid}: файл {name} уже принадлежит другому моду"),
+    "core.cache_removed": ("Removed from the game's mod cache: {name}", "Удалено из кэша модов игры: {name}"),
     # steam
     "steam.bad_id": ("Doesn't look like a Workshop ID or link: {text}", "Не похоже на workshop id / ссылку: {text}"),
     "steam.get_cmd": ("Downloading steamcmd: {url}", "Скачиваю steamcmd: {url}"),

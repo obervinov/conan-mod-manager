@@ -47,6 +47,19 @@ def detect_game_dir():
     return None
 
 
+def game_running():
+    """True if a Conan Exiles client or server process is up (Windows only)."""
+    if sys.platform != "win32":
+        return False
+    import subprocess
+    try:
+        out = subprocess.run(["tasklist", "/FO", "CSV", "/NH"], capture_output=True, text=True, errors="replace",
+                             creationflags=subprocess.CREATE_NO_WINDOW, timeout=10).stdout
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return any(line.lower().startswith('"conansandbox') for line in out.splitlines())
+
+
 def dark_titlebar(win, dark):
     """Windows 10 1809+/11: paint the native title bar to match the theme."""
     if sys.platform != "win32":
@@ -151,6 +164,7 @@ class App(tk.Tk):
             (t("btn.remove"), self.remove),
             (None, None),
             (t("btn.backup"), self.export),
+            (t("btn.clear_cache"), self.clear_cache),
             (t("btn.reload"), self.refresh),
         ):
             if text is None:
@@ -320,6 +334,12 @@ class App(tk.Tk):
 
         threading.Thread(target=run, daemon=True).start()
 
+    def ensure_closed(self):
+        if game_running():
+            messagebox.showwarning("Conan Exiles", t("game.running"))
+            return False
+        return True
+
     def guarded(fn):
         def wrap(self, *a):
             if self.game is None:
@@ -452,7 +472,7 @@ class App(tk.Tk):
     @guarded
     def remove(self):
         keys = self.selected()
-        if not keys:
+        if not keys or not self.ensure_closed():
             return
         names = "\n".join(self.game.get(k).title for k in keys)
         if not messagebox.askyesno(t("remove.title"), t("remove.ask", names=names)):
@@ -492,6 +512,8 @@ class App(tk.Tk):
         self.install(ids)
 
     def install(self, ids):
+        if not self.ensure_closed():
+            return
         game = self.game
 
         def work():
@@ -533,6 +555,22 @@ class App(tk.Tk):
         self.background(
             lambda: game.export_zip(dest, log=self.log_threadsafe),
             lambda total: self.log(t("backup.done", n=len(game.mods), mb=total // 1024 // 1024, dest=dest)))
+
+    @guarded
+    def clear_cache(self):
+        entries = self.game.cache_entries()
+        if not entries:
+            self.log(t("cache.empty"))
+            return
+        if not self.ensure_closed():
+            return
+        names = "\n".join(e.name for e in entries)
+        if not messagebox.askyesno(t("cache.title"), t("cache.ask", names=names)):
+            return
+        game = self.game
+        self.background(
+            game.clear_cache,
+            lambda res: self.log(t("cache.done", names=", ".join(res[0]), mb=res[1] // 1024 // 1024)))
 
     @guarded
     def show_conflicts(self):

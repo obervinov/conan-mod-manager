@@ -3,6 +3,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
 
+## v0.6.0 - 2026-10-14
+#### 🚀 Features
+* Cleans the game's own mod cache in `ConanSandbox/Saved`, which the game rebuilds from the `.pak` files:
+  - removing a mod also deletes its unpacked copy in `Saved/ExtractedMods` (matched by pak name: `Name`, `Name.*`, `Name-*`)
+  - updating a mod deletes the unpacked copy of the old version, so the game unpacks the new one
+  - **Clear game mod cache…** wipes `ExtractedMods`, `ModsCached`, `ModControllerCache.json` and `Modrestartdata.json` after a confirmation; `SaveGames` and `Config` are never touched
+* Remove, install/update and cache clearing refuse to run while Conan Exiles (client or server) is running.
+#### 🐛 Bug Fixes
+* Neutral wording about Steam client support in docs and code comments.
+
 ## v0.5.0 - 2026-10-14
 #### 🚀 Features
 * English and Russian interface. The default follows the Windows UI language; the **Русский / English** button switches it on the fly (the window is rebuilt, the log is kept) and the choice is remembered.

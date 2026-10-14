@@ -18,6 +18,10 @@ from .i18n import t
 
 MANIFEST = "conan-mod-manager.json"
 MODLIST = "modlist.txt"
+# The game unpacks enabled mods into ConanSandbox/Saved and rebuilds all of this from the paks.
+EXTRACTED = "ExtractedMods"
+CACHE_DIRS = ("ExtractedMods", "ModsCached")
+CACHE_FILES = ("ModControllerCache.json", "Modrestartdata.json")
 
 
 def _norm(p):
@@ -56,6 +60,7 @@ class Game:
         self.mods_dir = self.root / "ConanSandbox" / "Mods"
         self.mods_dir.mkdir(parents=True, exist_ok=True)
         self.modlist_path = self.mods_dir / MODLIST
+        self.saved_dir = self.root / "ConanSandbox" / "Saved"
         self.manifest_path = self.mods_dir / MANIFEST
         common = self.root.parent
         self.workshop_dir = None
@@ -191,6 +196,7 @@ class Game:
             if f.exists():
                 f.unlink()
                 self.log(t("core.deleted", name=f.name))
+        self.purge_extracted([f.name for f in m.files])
         if m.source == "managed":
             self.manifest["mods"].pop(m.wid, None)
         self.mods.remove(m)
@@ -209,6 +215,73 @@ class Game:
         m.key, m.source, m.wid, m.title = f"ws:{wid}", "managed", wid, title or m.title
         self.mods[idx] = m
         self.save()
+
+    # ---------- game's mod cache ----------
+
+    @staticmethod
+    def _rm(path):
+        if path.is_dir() and not path.is_symlink():
+            shutil.rmtree(path)
+        else:
+            path.unlink()
+
+    def _child(self, name):
+        """Case-insensitive lookup inside Saved/, as on Windows."""
+        if not self.saved_dir.is_dir():
+            return None
+        return next((c for c in self.saved_dir.iterdir() if c.name.lower() == name.lower()), None)
+
+    def extracted_for(self, pak_names):
+        """Entries of Saved/ExtractedMods that belong to these paks.
+
+        Matched by name on the first two levels: `Name`, `Name.<ext>` or `Name-<platform>…`
+        for a pak `Name.pak`. A miss only means the game keeps an extra copy; a wrong hit only
+        means the game unpacks that mod again on the next start.
+        """
+        root = self._child(EXTRACTED)
+        stems = {Path(n).stem.lower() for n in pak_names}
+        if not root or not stems:
+            return []
+
+        def hit(name):
+            n = name.lower()
+            return any(n == s or n.startswith((s + ".", s + "-")) for s in stems)
+
+        out = []
+        for entry in root.iterdir():
+            if hit(entry.name):
+                out.append(entry)
+            elif entry.is_dir():
+                out += [e for e in entry.iterdir() if hit(e.name)]
+        return out
+
+    def purge_extracted(self, pak_names):
+        removed = []
+        for entry in self.extracted_for(pak_names):
+            try:
+                self._rm(entry)
+            except OSError as e:  # locked by a running game: not worth failing an install for
+                self.log(t("log.error", e=e))
+                continue
+            removed.append(entry.name)
+            self.log(t("core.cache_removed", name=entry.name))
+        return removed
+
+    def cache_entries(self):
+        """Everything the game rebuilds from the paks: unpacked mods and mod caches."""
+        out = [c for c in (self._child(n) for n in CACHE_DIRS) if c]
+        out += [c for c in (self._child(n) for n in CACHE_FILES) if c]
+        return out
+
+    def clear_cache(self):
+        """Wipes the game's mod cache. Returns (entries removed, bytes freed)."""
+        removed, freed = [], 0
+        for entry in self.cache_entries():
+            files = [entry] if entry.is_file() else [f for f in entry.rglob("*") if f.is_file()]
+            freed += sum(f.stat().st_size for f in files)
+            self._rm(entry)
+            removed.append(entry.name)
+        return removed, freed
 
     def export_zip(self, dest, log=None):
         """Dumps every mod file + modlist.txt + a self-describing backup.json into one zip.
@@ -251,6 +324,8 @@ class Game:
         if clash:
             raise RuntimeError(t("core.clash", wid=wid, name=clash[0]))
         old = set(self.manifest["mods"].get(wid, {}).get("files", []))
+        # stale unpacked copy of the previous version: let the game unpack the new one
+        self.purge_extracted(sorted(old | {p.name for p in paks}))
         for p in paks:
             shutil.copy2(p, self.mods_dir / p.name)
         for stale in old - {p.name for p in paks}:

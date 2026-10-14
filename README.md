@@ -22,7 +22,7 @@ A small single-exe Windows app to keep Conan Exiles mods in order **without star
 - install mods from Steam Workshop by ID or link (several at once)
 - check installed mods for updates and update them in one click
 - enable/disable mods and change their load order
-- remove a mod together with every file it brought
+- remove a mod together with every file it brought, including the game's unpacked copy in `Saved/ExtractedMods`
 - back up the whole mod setup into one zip
 - see conflicts between mods, Legacy/Enhanced mismatches, and get a suggested load order
 
@@ -37,6 +37,7 @@ It works with or without the Steam client: downloads go through an anonymous `st
 | `ConanSandbox/Mods/modlist.txt` | The only file the game reads: a listed `.pak` is enabled, and line order is load order. The original is backed up once as `modlist.txt.bak`. |
 | `ConanSandbox/Mods/conan-mod-manager.json` | Records which `.pak` files belong to which Workshop ID, plus the full order (including disabled mods). This is why removal is exact. |
 | `steamcmd` | Fetched automatically on first use into `%LOCALAPPDATA%\ConanModManager\steamcmd`. Runs `+login anonymous +workshop_download_item 440900 <id>` with up to 3 retries. Its own copy of a mod is deleted right after install. |
+| `ConanSandbox/Saved/ExtractedMods`, `ModsCached`, `ModControllerCache.json`, `Modrestartdata.json` | The game's own mod cache, rebuilt from the paks on start. A removed or updated mod's unpacked copy is deleted; the whole cache can be cleared with one button. World saves (`SaveGames`) and `Config` are never touched. |
 | Steam Web API | `ISteamRemoteStorage/GetPublishedFileDetails` (no API key needed) supplies titles, `time_updated` for update checks, and file sizes for integrity checks. |
 
 The mod list combines three sources:
@@ -84,6 +85,7 @@ On first start it finds the Steam install of Conan Exiles through the registry a
 | Link to Workshop ID | Turn a hand-dropped `.pak` into a tracked mod |
 | Remove | Delete the mod files and remove them from `modlist.txt` |
 | Conflicts & load order… | Conflicts between enabled mods and a suggested load order you can apply in one click |
+| Clear game mod cache… | Wipe the game's unpacked mods and mod caches (fixes a stale or broken mod cache); the game rebuilds them on the next start |
 | Backup to zip… | Save all mod files, `modlist.txt` and `backup.json` (order, on/off, ids) into one archive |
 | ☀ Light / ☾ Dark | Switch between the dark (default) and light themes |
 | Русский / English | Switch the interface language |

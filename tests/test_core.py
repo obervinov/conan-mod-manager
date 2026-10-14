@@ -124,6 +124,51 @@ class GameTest(unittest.TestCase):
                          [("steam:111111", True), ("local:Local.pak", False), ("missing:C:\\gone\\Missing.pak", True)])
         self.assertFalse(Path(str(dest) + ".tmp").exists())
 
+    def _saved(self):
+        saved = self.root / "ConanSandbox" / "Saved"
+        ex = saved / "ExtractedMods"
+        for rel in ("Pippi.pak", "Pippi-Windows.utoc", "Pippi_Extras.pak", "Local", "nested/Local-Windows.ucas",
+                    "nested/Other.pak"):
+            (ex / rel).parent.mkdir(parents=True, exist_ok=True)
+            (ex / rel).write_bytes(b"x" * 10)
+        (saved / "ModsCached").mkdir()
+        (saved / "ModsCached" / "a.bin").write_bytes(b"y" * 5)
+        (saved / "ModControllerCache.json").write_text("{}")
+        (saved / "SaveGames").mkdir()
+        (saved / "SaveGames" / "game.db").write_text("world")
+        (saved / "Config").mkdir()
+        return saved, ex
+
+    def test_extracted_matching(self):
+        saved, ex = self._saved()
+        names = sorted(str(p.relative_to(ex)) for p in self.game.extracted_for(["Pippi.pak"]))
+        self.assertEqual(names, ["Pippi-Windows.utoc", "Pippi.pak"])  # not Pippi_Extras
+        names = sorted(str(p.relative_to(ex)) for p in self.game.extracted_for(["local.pak"]))
+        self.assertEqual(names, ["Local", "nested/Local-Windows.ucas"])
+
+    def test_remove_and_update_purge_cache(self):
+        saved, ex = self._saved()
+        self.game.remove("local:Local.pak")
+        self.assertFalse((ex / "Local").exists())
+        self.assertFalse((ex / "nested" / "Local-Windows.ucas").exists())
+        self.assertTrue((ex / "nested" / "Other.pak").exists())
+        dl = Path(self.tmp.name) / "dl"
+        dl.mkdir()
+        (dl / "Pippi.pak").write_bytes(b"p")
+        self.game.install("880454836", dl, {"title": "Pippi", "time_updated": 1})
+        self.assertFalse((ex / "Pippi.pak").exists())
+        self.assertTrue((ex / "Pippi_Extras.pak").exists())
+
+    def test_clear_cache_keeps_world(self):
+        saved, ex = self._saved()
+        self.assertEqual(sorted(e.name for e in self.game.cache_entries()),
+                         ["ExtractedMods", "ModControllerCache.json", "ModsCached"])
+        removed, freed = self.game.clear_cache()
+        self.assertEqual(freed, 6 * 10 + 5 + 2)
+        self.assertEqual(sorted(p.name for p in saved.iterdir()), ["Config", "SaveGames"])
+        self.assertEqual((saved / "SaveGames" / "game.db").read_text(), "world")
+        self.assertEqual(self.game.clear_cache(), ([], 0))
+
     def test_layout_without_workshop(self):
         root = Path(self.tmp.name) / "Conan Exiles"
         (root / "ConanSandbox" / "Mods").mkdir(parents=True)
