@@ -5,6 +5,7 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/) and this p
 
 ## v0.7.1 - 2026-10-14
 #### 📚 Documentation
+* CI/CD moved to `obervinov/_templates`: `pr.yaml` (pull request from `CHANGELOG.md`, version and date checks), `release.yaml` (tag and release on merge, no manual `git tag` any more) and the new `python-windows-exe.yaml` (exe + `SHA256SUMS` attached to the release). Unit tests on `windows-latest` stay a local job. `ConanModManager.spec` now holds the build settings; the checksum ships as `SHA256SUMS` instead of `ConanModManager.exe.sha256`.
 * Repository housekeeping: `CODEOWNERS`, pull request and issue templates (bug report asks for the app log and game edition), Dependabot for pip and GitHub Actions, labels `python`, `github_actions`, `dependencies`, `compatibility`.
 
 ## v0.7.0 - 2026-10-14

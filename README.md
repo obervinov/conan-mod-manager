@@ -1,5 +1,5 @@
 # Conan Exiles Mod Manager
-[![CI](https://github.com/obervinov/conan-mod-manager/actions/workflows/ci.yaml/badge.svg)](https://github.com/obervinov/conan-mod-manager/actions/workflows/ci.yaml)
+[![PR](https://github.com/obervinov/conan-mod-manager/actions/workflows/pr.yaml/badge.svg)](https://github.com/obervinov/conan-mod-manager/actions/workflows/pr.yaml)
 [![Release](https://github.com/obervinov/conan-mod-manager/actions/workflows/release.yaml/badge.svg)](https://github.com/obervinov/conan-mod-manager/actions/workflows/release.yaml)
 
 ![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/obervinov/conan-mod-manager?style=for-the-badge)
@@ -66,7 +66,7 @@ If `modlist.txt` is edited by hand (or by the game launcher), that order is pick
 ## <img src="https://github.com/obervinov/_templates/blob/v1.2.2/icons/requirements.png" width="25" title="install"> Install
 Download `ConanModManager.exe` from the [latest release](https://github.com/obervinov/conan-mod-manager/releases/latest) and run it. It has no installer and needs no Python.
 
-The exe is not code-signed, so Windows SmartScreen may warn about an unknown publisher (**More info → Run anyway**). Each release lists the exe's SHA256; to check your download, run:
+The exe is not code-signed, so Windows SmartScreen may warn about an unknown publisher (**More info → Run anyway**). Each release has a `SHA256SUMS` file; compare its line with:
 
 ```powershell
 Get-FileHash .\ConanModManager.exe -Algorithm SHA256
@@ -100,6 +100,8 @@ On first start it finds the Steam install of Conan Exiles through the registry a
 pip install -r requirements.txt  :: optional: sv-ttk theme, falls back to plain ttk without it
 python main.py          :: run from source (Python 3.10+)
 python -m unittest -v   :: tests
-build.bat               :: local build into dist\ConanModManager.exe
+build.bat               :: local build into dist\ConanModManager.exe (from ConanModManager.spec)
 ```
-Pushing a `v*` tag makes GitHub Actions build the exe on `windows-latest` and attach it to a release, with notes taken from `CHANGELOG.md`.
+CI/CD comes from [obervinov/_templates](https://github.com/obervinov/_templates):
+- a push to a branch opens or updates the pull request from `CHANGELOG.md` (`pr.yaml`), runs the unit tests on `windows-latest`, and builds the exe as a run artifact (`python-windows-exe.yaml`);
+- merging the pull request creates the tag and release from the top `CHANGELOG.md` entry (`release.yaml`) and attaches `ConanModManager.exe` with `SHA256SUMS`.
