@@ -63,6 +63,19 @@ class AnalyzeTest(unittest.TestCase):
         self.assertEqual(analyze.compat_issue("UE4", "UE5"), "legacy_in_enhanced")
         self.assertIsNone(analyze.compat_issue("UE4", None))
 
+    def test_game_engine(self):
+        class G:
+            root = Path(self.tmp.name) / "game"
+
+        paks = G.root / "ConanSandbox" / "Content" / "Paks"
+        paks.mkdir(parents=True)
+        self.assertIsNone(analyze.game_engine(G))
+        # legacy-format DLC pak sorts first ("D" < "p"): must not flip Enhanced to UE4
+        write_pak_v4(paks / "DLC_EXT_DLC_Siptah.pak", "Dlc", {"A.uasset": b"a"})
+        self.assertEqual(analyze.game_engine(G), "UE4")
+        (paks / "pakchunk0-Windows.utoc").write_bytes(b"\0")
+        self.assertEqual(analyze.game_engine(G), "UE5")
+
     def test_conflicts(self):
         cs = analyze.find_conflicts(self.mods, self.infos)
         got = {(c.kind, c.winner, c.loser, tuple(sorted(c.assets))) for c in cs}

@@ -109,14 +109,23 @@ class Scanner:
 
 
 def game_engine(game):
-    """Engine of the installed game, read from its own content paks."""
+    """Engine of the installed game, read from its own content paks.
+
+    IoStore containers (.utoc) exist only in UE5 builds. Without them, the newest pak format
+    present wins: a single DLC or patch pak in an older format must not decide for the game.
+    """
     paks_dir = game.root / "ConanSandbox" / "Content" / "Paks"
-    for p in sorted(paks_dir.glob("*.pak")) if paks_dir.is_dir() else []:
+    if not paks_dir.is_dir():
+        return None
+    if any(paks_dir.glob("*.utoc")):
+        return "UE5"
+    versions = []
+    for p in paks_dir.glob("*.pak"):
         try:
-            return pak.engine(pak.read_version(p))
+            versions.append(pak.read_version(p))
         except (pak.PakError, OSError):
             continue
-    return None
+    return pak.engine(max(versions)) if versions else None
 
 
 def compat_issue(mod_engine, engine):
