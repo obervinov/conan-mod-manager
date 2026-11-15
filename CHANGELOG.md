@@ -3,6 +3,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
 
+## v0.7.2 - 2026-11-15
+#### 🐛 Bug Fixes
+* Game edition detection no longer flags every Enhanced mod as "this game version won't load it" after a game update. The edition was read from the first `.pak` in `ConanSandbox/Content/Paks` by name, which is a DLC pak (`DLC_*` sorts before `pakchunk*`) in an older pak format. Now IoStore containers (`*.utoc`) mean Enhanced; without them the newest pak format present decides.
+
 ## v0.7.1 - 2026-10-14
 #### 📚 Documentation
 * CI/CD moved to `obervinov/_templates`: `pr.yaml` (pull request from `CHANGELOG.md`, version and date checks), `release.yaml` (tag and release on merge, no manual `git tag` any more) and the new `python-windows-exe.yaml` (exe + `SHA256SUMS` attached to the release). Unit tests on `windows-latest` stay a local job. `ConanModManager.spec` now holds the build settings; the checksum ships as `SHA256SUMS` instead of `ConanModManager.exe.sha256`.
