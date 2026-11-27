@@ -2,6 +2,7 @@ import json
 import os
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 from conan_mm.core import Game
@@ -96,6 +97,38 @@ class GameTest(unittest.TestCase):
         self.assertFalse((self.mods / "Pippi2.pak").exists())
         self.assertNotIn("880454836", json.loads((self.mods / "conan-mod-manager.json").read_text())["mods"])
         self.assertFalse(any("Pippi" in ln for ln in self.modlist()))
+
+    def test_added_and_updated_times(self):
+        os.utime(self.mods / "Local.pak", (1000, 1000))
+        self.game.reload()
+        local = self.game.get("local:Local.pak")
+        self.assertGreater(local.added_at, 0)
+        self.assertGreaterEqual(local.updated_at, local.added_at)
+
+        dl = Path(self.tmp.name) / "dl"
+        dl.mkdir()
+        (dl / "Pippi.pak").write_bytes(b"p")
+        with mock.patch("conan_mm.core.time.time", return_value=5000):
+            self.game.install("880454836", dl, {"title": "Pippi", "time_updated": 100})
+        with mock.patch("conan_mm.core.time.time", return_value=9000):
+            self.game.install("880454836", dl, {"title": "Pippi", "time_updated": 200})
+        self.game.reload()
+        m = self.game.get("ws:880454836")
+        self.assertEqual((m.added_at, m.updated_at), (5000, 9000))  # update moves only "updated"
+
+        # first-seen time is stored and survives a rescan; removal forgets it
+        added = json.loads((self.mods / "conan-mod-manager.json").read_text())["added"]
+        self.assertEqual(added["local:Local.pak"], local.added_at)
+        self.game.remove("ws:880454836")
+        self.assertNotIn("ws:880454836", self.game.manifest["added"])
+
+    def test_link_keeps_added_time(self):
+        self.game.save()
+        self.game.reload()
+        before = self.game.get("local:Local.pak").added_at
+        self.game.link("local:Local.pak", "222222")
+        self.game.reload()
+        self.assertEqual(self.game.get("ws:222222").added_at, before)
 
     def test_remove_steam_only_disables(self):
         hint = self.game.remove("steam:111111")

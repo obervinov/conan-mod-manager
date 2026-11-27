@@ -3,6 +3,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
 
+## v0.8.0 - 2026-11-27
+#### 🚀 Features
+* **▶ Play** button starts the game from the app, and **⚙** next to it picks how: through Steam (`steam://rungameid/440900`), `ConanSandbox.exe` directly with extra arguments, or your own `.bat` / `.cmd` / `.exe` / shortcut with arguments, e.g. a batch file with debug flags. A `.bat` opens in its own console window and receives the arguments as `%*`. The choice is remembered.
+* **Added** and **Updated** columns: when each mod first appeared in this install and when its current files arrived (install, update, or a Steam re-download). Click either heading to sort newest first and find what changed before the game started crashing; the load order stays in the **#** column, and clicking **#** (or moving a mod) goes back to it. The first-seen time is kept in `conan-mod-manager.json`, so an update does not reset it.
+#### 📦 Dependencies
+* `sv-ttk` 2.6.0 → 2.6.1.
+* `obervinov/_templates` workflows v4.3.0 → v4.4.0.
+
 ## v0.7.2 - 2026-11-15
 #### 🐛 Bug Fixes
 * Game edition detection no longer flags every Enhanced mod as "this game version won't load it" after a game update. The edition was read from the first `.pak` in `ConanSandbox/Content/Paks` by name, which is a DLC pak (`DLC_*` sorts before `pakchunk*`) in an older pak format. Now IoStore containers (`*.utoc`) mean Enhanced; without them the newest pak format present decides.

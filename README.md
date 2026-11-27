@@ -77,7 +77,9 @@ On first start it finds the Steam install of Conan Exiles through the registry a
 ## <img src="https://github.com/obervinov/_templates/blob/v1.2.2/icons/build.png" width="25" title="usage"> Usage
 | Button | Action |
 | --- | --- |
+| ▶ Play | Start the game the way set under ⚙: through Steam (`steam://rungameid/440900`, Steam's own launch options apply), `ConanSandbox.exe` directly with your arguments, or your own `.bat` / `.cmd` / `.exe` / shortcut with arguments (a `.bat` gets them as `%*` and opens in its own console) |
 | Add by ID / link | Paste one or more Workshop IDs / URLs; they are downloaded, installed, and enabled at the end of the list |
+| Added / Updated (column headings) | Sort by when a mod first appeared / when its current files arrived, newest first: handy to see what changed before the game started crashing. Click **#** to go back to load order |
 | Enable / disable (or double-click / Space) | Toggle the selected mods |
 | ▲ Up / ▼ Down | Change the load order |
 | Check for updates | Compare installed versions with Workshop |
