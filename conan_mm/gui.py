@@ -10,7 +10,7 @@ import webbrowser
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
-from . import __version__, analyze, i18n, steam
+from . import __version__, analyze, i18n, launch, steam
 from .core import Game
 from .i18n import t
 
@@ -47,6 +47,10 @@ def detect_game_dir():
     return None
 
 
+def fmt_time(ts):
+    return time.strftime("%Y-%m-%d %H:%M", time.localtime(ts)) if ts else ""
+
+
 def game_running():
     """True if a Conan Exiles client or server process is up (Windows only)."""
     if sys.platform != "win32":
@@ -80,7 +84,7 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title(f"Conan Exiles Mod Manager {__version__}")
-        self.geometry("1000x620")
+        self.geometry("1200x620")
         self.minsize(760, 420)
         self.data_dir = steam.default_data_dir()
         self.cfg_path = self.data_dir / "config.json"
@@ -90,6 +94,7 @@ class App(tk.Tk):
         self.details = {}
         self.scanner = analyze.Scanner()
         self.infos, self.conflicts, self.engine = {}, [], None
+        self.sort_by = None  # None = load order, or "added" / "updated": newest first
         self.steamcmd = steam.SteamCmd(self.data_dir / "steamcmd", log=self.log_threadsafe)
         self.cfg = self._load_cfg()
         i18n.set_lang(self.cfg.get("lang") or i18n.system_lang())
@@ -116,16 +121,19 @@ class App(tk.Tk):
 
         mid = ttk.Frame(self, padding=(6, 0))
         mid.pack(fill="both", expand=True)
-        cols = ("n", "on", "title", "wid", "src", "eng", "cnf", "status")
+        cols = ("n", "on", "title", "wid", "src", "eng", "cnf", "added", "updated", "status")
         self.tree = ttk.Treeview(mid, columns=cols, show="headings", selectmode="extended")
         for c, text, w, anchor in (
             ("n", "#", 40, "e"), ("on", t("col.on"), 45, "center"), ("title", t("col.title"), 420, "w"),
             ("wid", "Workshop ID", 110, "w"), ("src", t("col.src"), 80, "w"),
             ("eng", t("col.eng"), 60, "center"), ("cnf", t("col.cnf"), 55, "center"),
+            ("added", t("col.added"), 120, "w"), ("updated", t("col.updated"), 120, "w"),
             ("status", t("col.status"), 230, "w"),
         ):
             self.tree.heading(c, text=text)
             self.tree.column(c, width=w, anchor=anchor, stretch=(c == "title"))
+        for c in ("added", "updated", "n"):
+            self.tree.heading(c, command=lambda c=c: self.sort(c))
         sb = ttk.Scrollbar(mid, command=self.tree.yview)
         self.tree.configure(yscrollcommand=sb.set)
         self.tree.pack(side="left", fill="both", expand=True)
@@ -147,6 +155,15 @@ class App(tk.Tk):
         side = ttk.Frame(mid, padding=(8, 0))
         side.pack(side="left", fill="y")
         self.buttons = []
+        play = ttk.Frame(side)
+        play.pack(fill="x", pady=(0, 2))
+        b = ttk.Button(play, text=t("btn.play"), command=self.play, style="Accent.TButton")
+        b.pack(side="left", fill="x", expand=True)
+        self.buttons.append(b)
+        b = ttk.Button(play, text="⚙", width=3, command=self.launch_settings)
+        b.pack(side="left", padx=(4, 0))
+        self.buttons.append(b)
+        ttk.Separator(side).pack(fill="x", pady=6)
         for text, cmd in (
             (t("btn.add"), self.add),
             (t("btn.toggle"), self.toggle),
@@ -373,9 +390,15 @@ class App(tk.Tk):
                 per_mod[k] = per_mod.get(k, 0) + 1
         sel = set(self.tree.selection())
         self.tree.delete(*self.tree.get_children())
-        n = 0
+        pos, n = {}, 0
         for m in self.game.mods:
             n += m.enabled
+            pos[m.key] = n
+        rows = self.game.mods
+        if self.sort_by:
+            rows = sorted(rows, key=lambda m: getattr(m, f"{self.sort_by}_at"), reverse=True)
+        for m in rows:
+            n = pos[m.key]
             info = self.infos.get(m.key)
             compat = analyze.compat_issue(info.engine, self.engine) if info else None
             if compat:
@@ -389,10 +412,20 @@ class App(tk.Tk):
                 tags += ("warn",)
             self.tree.insert("", "end", iid=m.key, tags=tags, values=(
                 n if m.enabled else "", "✔" if m.enabled else "", m.title, m.wid or "",
-                t(f"src.{m.source}"), info.engine if info else "", per_mod.get(m.key, ""), status))
+                t(f"src.{m.source}"), info.engine if info else "", per_mod.get(m.key, ""),
+                fmt_time(m.added_at), fmt_time(m.updated_at), status))
         keep = [k for k in sel if self.tree.exists(k)]
         if keep:
             self.tree.selection_set(keep)
+
+    def sort(self, col):
+        """Click on Added / Updated: newest first; click again (or on #) back to load order."""
+        self.sort_by = None if col == "n" or self.sort_by == col else col
+        for c in ("added", "updated"):
+            self.tree.heading(c, text=t(f"col.{c}") + (" ▼" if self.sort_by == c else ""))
+        if self.sort_by:
+            self.log(t("log.sorted", col=t(f"col.{self.sort_by}")))
+        self.redraw()
 
     def _popup(self, event):
         row = self.tree.identify_row(event.y)
@@ -488,6 +521,8 @@ class App(tk.Tk):
     @guarded
     def move(self, delta):
         keys = self.selected()
+        if self.sort_by:  # moving rows only makes sense when the view is the load order
+            self.sort("n")
         order = sorted(keys, key=lambda k: self.game.mods.index(self.game.get(k)), reverse=delta > 0)
         for k in order:
             self.game.move(k, delta)
@@ -507,6 +542,24 @@ class App(tk.Tk):
                 self.log(t("remove.steam_hint"))
         self.mods_changed()
         self.redraw()
+
+    @guarded
+    def play(self):
+        if game_running():
+            messagebox.showinfo("Conan Exiles", t("play.running"))
+            return
+        try:
+            p = launch.plan(self.cfg.get("launch"), self.game.root)
+        except ValueError as e:
+            if messagebox.askyesno(t("play.title"), t("play.bad", e=e)):
+                self.launch_settings()
+            return
+        launch.run(p)
+        self.log(t("play.started", what=p.get("cmdline") or p["target"]))
+
+    @guarded
+    def launch_settings(self):
+        LaunchDialog(self)
 
     @guarded
     def open_page(self):
@@ -734,3 +787,70 @@ class ConflictsDialog(tk.Toplevel):
 
 def main():
     App().mainloop()
+
+
+class LaunchDialog(tk.Toplevel):
+    """How the Play button starts the game: Steam, the game exe, or the user's own file + arguments."""
+
+    def __init__(self, app):
+        super().__init__(app)
+        self.app = app
+        self.title(t("launch.title"))
+        self.transient(app)
+        self.resizable(True, False)
+        cur = launch.normalize(app.cfg.get("launch"))
+        self.mode = tk.StringVar(value=cur["mode"])
+        self.path = tk.StringVar(value=cur["path"])
+        self.args = tk.StringVar(value=cur["args"])
+
+        body = ttk.Frame(self, padding=10)
+        body.pack(fill="both", expand=True)
+        for mode in launch.MODES:
+            ttk.Radiobutton(body, text=t(f"launch.mode_{mode}"), value=mode, variable=self.mode,
+                            command=self._sync).pack(anchor="w", pady=1)
+
+        row = ttk.Frame(body)
+        row.pack(fill="x", pady=(8, 0))
+        ttk.Label(row, text=t("launch.file")).pack(side="left")
+        self.path_entry = ttk.Entry(row, textvariable=self.path, width=60)
+        self.path_entry.pack(side="left", fill="x", expand=True, padx=6)
+        self.browse_btn = ttk.Button(row, text=t("app.pick"), command=self._browse)
+        self.browse_btn.pack(side="left")
+
+        row = ttk.Frame(body)
+        row.pack(fill="x", pady=(8, 0))
+        ttk.Label(row, text=t("launch.args")).pack(side="left")
+        self.args_entry = ttk.Entry(row, textvariable=self.args, width=60)
+        self.args_entry.pack(side="left", fill="x", expand=True, padx=6)
+
+        self.hint = ttk.Label(body, style="Dim.TLabel", wraplength=560, justify="left")
+        self.hint.pack(fill="x", pady=(8, 0))
+
+        btns = ttk.Frame(body)
+        btns.pack(fill="x", pady=(10, 0))
+        ttk.Button(btns, text=t("launch.save"), command=self._save).pack(side="right")
+        ttk.Button(btns, text=t("conf.close"), command=self.destroy).pack(side="right", padx=6)
+        self._sync()
+        dark_titlebar(self, app.theme == "dark")
+        self.grab_set()
+
+    def _sync(self):
+        mode = self.mode.get()
+        custom = mode == "custom"
+        for w in (self.path_entry, self.browse_btn):
+            w.state(["!disabled"] if custom else ["disabled"])
+        self.args_entry.state(["disabled"] if mode == "steam" else ["!disabled"])
+        self.hint.configure(text=t(f"launch.hint_{mode}"))
+
+    def _browse(self):
+        f = filedialog.askopenfilename(parent=self, title=t("launch.file"), filetypes=[
+            (t("launch.types"), "*.bat *.cmd *.exe *.lnk"), ("*", "*")])
+        if f:
+            self.path.set(str(Path(f)))
+
+    def _save(self):
+        self.app.cfg["launch"] = launch.normalize(
+            {"mode": self.mode.get(), "path": self.path.get(), "args": self.args.get()})
+        self.app._save_cfg()
+        self.app.log(t("launch.saved", mode=t(f"launch.mode_{self.mode.get()}")))
+        self.destroy()

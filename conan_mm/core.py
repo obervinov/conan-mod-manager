@@ -28,6 +28,20 @@ def _norm(p):
     return os.path.normcase(os.path.normpath(str(p)))
 
 
+def _born(f):
+    """When the file appeared on this disk: creation time on Windows/macOS, mtime elsewhere."""
+    st = f.stat()
+    if hasattr(st, "st_birthtime"):
+        return int(st.st_birthtime)
+    return int(st.st_ctime if os.name == "nt" else st.st_mtime)
+
+
+def _touched(f):
+    """When this copy of the file last arrived: a copy keeps the source mtime but gets a fresh ctime on Windows."""
+    st = f.stat()
+    return int(max(st.st_mtime, st.st_ctime) if os.name == "nt" else st.st_mtime)
+
+
 def find_game_root(picked):
     """User may point at the game folder, ConanSandbox, or ConanSandbox/Mods."""
     p = Path(picked)
@@ -48,6 +62,8 @@ class Mod:
     installed_at: int = 0  # workshop time_updated of the installed copy
     status: str = ""  # code: ok | update | steam_updates | size_mismatch | missing_files | no_file | not_in_workshop
     raw_line: str = None  # modlist line we could not resolve (missing)
+    added_at: int = 0  # local time the mod first showed up (install / first seen)
+    updated_at: int = 0  # local time the current files arrived (install, update, Steam re-download)
 
     @property
     def size(self):
@@ -80,6 +96,7 @@ class Game:
             data = {}
         data.setdefault("mods", {})
         data.setdefault("order", [])
+        data.setdefault("added", {})
         return data
 
     def _write(self, path, text):
@@ -164,11 +181,31 @@ class Game:
 
         # Order: manifest order, new mods appended; then enabled mods are re-sorted
         # into their own slots by modlist.txt, so an external edit of the load order wins.
+        self._stamp(found.values())
         order = [found.pop(k) for k in self.manifest["order"] if k in found] + list(found.values())
         slots = [i for i, m in enumerate(order) if m.enabled]
         for i, m in zip(slots, enabled_order):
             order[i] = m
         self.mods = order + missing
+
+    def _stamp(self, mods):
+        """Fills added_at / updated_at. The first-seen time is kept in the manifest so it survives updates."""
+        added, new = self.manifest["added"], False
+        for m in mods:
+            files = [f for f in m.files if f.exists()]
+            if not files:
+                m.added_at = int(added.get(m.key) or 0)
+                continue
+            installed = m.source == "managed" and int(self.manifest["mods"][m.wid].get("installed") or 0)
+            m.updated_at = installed or max(_touched(f) for f in files)
+            if m.key not in added:
+                added[m.key] = min([_born(f) for f in files] + [m.updated_at])
+                new = True
+            m.added_at = int(added[m.key])
+        # Persist only into a manifest that already exists: creating it here would skip the
+        # one-time modlist.txt backup that save() makes on the first real edit.
+        if new and self.manifest_path.exists():
+            self._write(self.manifest_path, json.dumps(self.manifest, indent=2, ensure_ascii=False))
 
     # ---------- edits ----------
 
@@ -199,6 +236,7 @@ class Game:
         self.purge_extracted([f.name for f in m.files])
         if m.source == "managed":
             self.manifest["mods"].pop(m.wid, None)
+        self.manifest["added"].pop(m.key, None)
         self.mods.remove(m)
         self.save()
         return None
@@ -212,6 +250,8 @@ class Game:
             raise ValueError(t("core.already", wid=wid))
         self.manifest["mods"][wid] = {"title": title or m.title, "files": [m.files[0].name], "time_updated": 0}
         idx = self.mods.index(m)
+        added = self.manifest["added"]
+        added[f"ws:{wid}"] = added.pop(m.key, m.added_at or int(time.time()))
         m.key, m.source, m.wid, m.title = f"ws:{wid}", "managed", wid, title or m.title
         self.mods[idx] = m
         self.save()
@@ -334,15 +374,21 @@ class Game:
             "title": details.get("title") or f"#{wid}",
             "files": [p.name for p in paks],
             "time_updated": details.get("time_updated") or int(time.time()),
+            "installed": int(time.time()),
         }
         key = f"ws:{wid}"
+        self.manifest["added"].setdefault(key, self.manifest["mods"][wid]["installed"])
         was = next((m for m in self.mods if m.key == key), None)
         # A pak with the same name may have been sitting there as "local"; it is this mod now.
         names = {p.name for p in paks}
+        for m in self.mods:
+            if m.source == "local" and m.files[0].name in names and m.key in self.manifest["added"]:
+                self.manifest["added"][key] = min(self.manifest["added"][key], self.manifest["added"].pop(m.key))
         self.mods = [m for m in self.mods if not (m.source == "local" and m.files[0].name in names)]
         new = Mod(key, "managed", self.manifest["mods"][wid]["title"],
                   [self.mods_dir / p.name for p in paks], wid,
-                  enabled=was.enabled if was else True, installed_at=self.manifest["mods"][wid]["time_updated"])
+                  enabled=was.enabled if was else True, installed_at=self.manifest["mods"][wid]["time_updated"],
+                  added_at=self.manifest["added"][key], updated_at=self.manifest["mods"][wid]["installed"])
         if was:
             self.mods[self.mods.index(was)] = new
         else:
