@@ -173,8 +173,11 @@ def find_conflicts(mods, infos):
     return sorted(pairs.values(), key=lambda c: (order[c.kind], -len(c.assets)))
 
 
-def suggest_order(mods, infos, conflicts):
+def suggest_order(mods, infos, conflicts, required=None):
     """Stable topological sort of the enabled mods.
+
+    `required` ({key: {keys}}) are Workshop dependencies: a hard rule, a requirement loads
+    above the mod that needs it, and a conflict heuristic that says otherwise is dropped.
 
     A patch goes below the mod it patches. For every override conflict the more specific
     mod (fewer overridden base-game assets, i.e. a tweak) goes below the broader one so it
@@ -183,15 +186,23 @@ def suggest_order(mods, infos, conflicts):
     pos = {m.key: i for i, m in enumerate(mods)}
     weight = {m.key: sum(category(k) == "override" for k in infos.get(m.key, PakInfo()).assets) for m in mods}
     after = defaultdict(set)  # key -> keys that must load before it
+    hard = {k: set(v) & set(pos) for k, v in (required or {}).items() if k in pos}
+    for k, v in hard.items():
+        after[k] |= v
+
+    def soft(later, earlier):
+        if later not in hard.get(earlier, ()):
+            after[later].add(earlier)
+
     for c in conflicts:
         if c.kind == "patch":
-            after[c.winner].add(c.loser)
+            soft(c.winner, c.loser)
             continue
         if c.kind != "override":
             continue
         a, b = c.winner, c.loser
         broad, narrow = sorted((a, b), key=lambda k: (-weight[k], pos[k]))
-        after[narrow].add(broad)
+        soft(narrow, broad)
     done, out = set(), []
     remaining = [m.key for m in mods]
     while remaining:

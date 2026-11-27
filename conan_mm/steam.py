@@ -12,6 +12,7 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
+from . import deps
 from .i18n import t
 
 APP_ID = 440900  # Conan Exiles (workshop items)
@@ -59,6 +60,17 @@ def fetch_details(ids, timeout=30):
             "file_size": int(it.get("file_size") or 0),
         }
     return out
+
+
+def fetch_required(wid, timeout=20):
+    """Direct requirements of a workshop item, read from its page (the Web API does not expose them)."""
+    req = urllib.request.Request(workshop_url(wid), headers={"User-Agent": "Mozilla/5.0 ConanModManager",
+                                                             "Accept-Language": "en"})
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        html = resp.read().decode("utf-8", errors="replace")
+    if "workshopItemTitle" not in html and "RequiredItems" not in html:
+        raise RuntimeError(f"unexpected Workshop page for {wid}")
+    return deps.parse_required(html, wid)
 
 
 def default_data_dir():

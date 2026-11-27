@@ -97,6 +97,7 @@ class Game:
         data.setdefault("mods", {})
         data.setdefault("order", [])
         data.setdefault("added", {})
+        data.setdefault("requires", {})  # workshop id -> [required workshop ids], from the Workshop page
         return data
 
     def _write(self, path, text):
@@ -206,6 +207,17 @@ class Game:
         # one-time modlist.txt backup that save() makes on the first real edit.
         if new and self.manifest_path.exists():
             self._write(self.manifest_path, json.dumps(self.manifest, indent=2, ensure_ascii=False))
+
+    @property
+    def requires(self):
+        return self.manifest["requires"]
+
+    def set_requires(self, graph):
+        """Merges a resolved dependency graph into the manifest (only ids that were actually read)."""
+        changed = any(self.manifest["requires"].get(k) != v for k, v in graph.items())
+        self.manifest["requires"].update({k: list(v) for k, v in graph.items()})
+        if changed:
+            self.save()
 
     # ---------- edits ----------
 
