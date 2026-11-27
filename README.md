@@ -87,6 +87,7 @@ On first start it finds the Steam install of Conan Exiles through the registry a
 | Update selected / Update all | Re-download the outdated or broken mods |
 | Link to Workshop ID | Turn a hand-dropped `.pak` into a tracked mod |
 | Remove | Delete the mod files and remove them from `modlist.txt` |
+| Check dependencies (checkbox, off by default) + 🔑 | Turn dependency checks on; without a Steam Web API key they read Workshop pages slowly (Steam may rate-limit them), with a free key from steamcommunity.com/dev/apikey they use the Web API |
 | Right-click → Install missing requirements | Install the Workshop "Required items" the selected mods (or all mods) are missing |
 | Conflicts & load order… | Conflicts between enabled mods and a suggested load order you can apply in one click |
 | Clear game mod cache… | Wipe the game's unpacked mods and mod caches (fixes a stale or broken mod cache); the game rebuilds them on the next start |

@@ -3,6 +3,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
 
+## v0.9.1 - 2026-11-27
+#### 🐛 Bug Fixes
+* Dependency reading no longer gets the IP banned by Steam's CDN. v0.9.0 read Workshop pages in 8 parallel requests on every start and update check, and with a long mod list Steam answered HTTP 403 to every page for a while. Now pages are read one every 1.5 s, the first 403/429 stops the run instead of extending the ban, and the log says what happened instead of listing ids.
+#### 🚀 Features
+* **Check dependencies** checkbox in the side panel, **off by default**: no Workshop requests are made until it is enabled, and enabling it without a key warns that Steam may still rate-limit page reads.
+* **🔑** next to it: an optional free Steam Web API key (steamcommunity.com/dev/apikey). With a key, dependencies come from `IPublishedFileService/GetDetails`, one request per 100 mods, and Workshop pages are not touched. The key is kept only in the app's settings file.
+
 ## v0.9.0 - 2026-11-27
 #### 🚀 Features
 * **Mod dependencies.** The Workshop Required items of every mod are read from its Workshop page (the Steam Web API does not return them without a key), followed through the whole chain, and cached in `conan-mod-manager.json`:

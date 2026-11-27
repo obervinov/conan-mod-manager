@@ -1,6 +1,10 @@
+import io
+import json
 import unittest
+import urllib.error
+from unittest import mock
 
-from conan_mm import analyze, deps
+from conan_mm import analyze, deps, steam
 from conan_mm.core import Mod
 
 PAGE = """
@@ -46,28 +50,85 @@ class GraphTest(unittest.TestCase):
         self.calls = []
 
     def test_resolve_transitive(self):
-        graph, failed = deps.resolve(["top"], self.fetch)
+        graph, failed, _ = deps.resolve(["top"], self.fetch)
         self.assertEqual(graph, {"top": ["mid", "base"], "mid": ["base"], "base": []})
         self.assertEqual(failed, [])
         self.assertEqual(sorted(self.calls), ["base", "mid", "top"])  # each page read once
 
     def test_resolve_uses_cache_and_refresh(self):
-        graph, _ = deps.resolve(["top"], self.fetch, known={"top": ["mid"], "mid": []}, refresh=["top"])
+        graph, _, _ = deps.resolve(["top"], self.fetch, known={"top": ["mid"], "mid": []}, refresh=["top"])
         self.assertEqual(self.calls.count("top"), 1)
         self.assertNotIn("mid", self.calls)  # cached, not refreshed
         self.assertEqual(graph["top"], ["mid", "base"])
 
     def test_resolve_cycle_and_failure(self):
-        graph, failed = deps.resolve(["loop", "broken"], self.fetch)
+        graph, failed, blocked = deps.resolve(["loop", "broken"], self.fetch)
+        self.assertIsNone(blocked)
         self.assertEqual(set(graph), {"loop", "loop2"})
         self.assertEqual(failed, ["broken"])
         self.assertEqual(sorted(deps.closure("loop", graph)), ["loop2"])
+
+    def test_blocked_stops_fetching(self):
+        pages = {"a": ["b", "c"], "b": ["d"]}
+
+        def fetch(wid):
+            self.calls.append(wid)
+            if wid == "b":
+                raise deps.Blocked("HTTP 403")
+            return pages.get(wid, [])
+
+        graph, failed, blocked = deps.resolve(["a", "x"], fetch)
+        self.assertEqual(str(blocked), "HTTP 403")
+        self.assertEqual(self.calls, ["a", "x", "b"])  # nothing after the block
+        self.assertEqual(graph, {"a": ["b", "c"], "x": []})
+        self.assertEqual(sorted(failed), ["b", "c"])
+
+    def test_batch_source(self):
+        batches = []
+
+        def batch(ids):
+            batches.append(sorted(ids))
+            return {w: self.PAGES[w] for w in ids if w in self.PAGES}
+
+        graph, failed, blocked = deps.resolve(["top", "gone"], None, batch=batch)
+        self.assertEqual(batches, [["gone", "top"], ["base", "mid"]])  # one call per level
+        self.assertEqual(set(graph), {"top", "mid", "base"})
+        self.assertEqual((failed, blocked), (["gone"], None))
+
+    def test_batch_key_rejected(self):
+        def batch(ids):
+            raise deps.KeyRejected("HTTP 403")
+
+        graph, failed, blocked = deps.resolve(["top"], None, batch=batch)
+        self.assertIsInstance(blocked, deps.KeyRejected)
+        self.assertEqual((graph, failed), ({}, ["top"]))
 
     def test_closure_and_install_order(self):
         graph = dict(self.PAGES)
         self.assertEqual(sorted(deps.closure("top", graph)), ["base", "mid"])
         self.assertEqual(deps.install_order(["top", "mid", "base"], graph), ["base", "mid", "top"])
         self.assertEqual(deps.install_order(["loop", "loop2"], graph), ["loop2", "loop"])
+
+
+class ApiTest(unittest.TestCase):
+    def test_children_parsed(self):
+        body = {"response": {"publishedfiledetails": [
+            {"publishedfileid": "1000001", "result": 1,
+             "children": [{"publishedfileid": "1000002", "sortorder": 0, "file_type": 0}]},
+            {"publishedfileid": "1000003", "result": 1},
+            {"publishedfileid": "1000004", "result": 9}]}}
+        with mock.patch("urllib.request.urlopen", return_value=io.BytesIO(json.dumps(body).encode())) as op:
+            got = steam.fetch_required_api(["1000001", "1000003", "1000004"], "SECRETKEY")
+        self.assertEqual(got, {"1000001": ["1000002"], "1000003": []})
+        self.assertIn("includechildren=true", op.call_args[0][0])
+
+    def test_rejected_key_not_leaked(self):
+        err = urllib.error.HTTPError("https://x/?key=SECRETKEY", 403, "Forbidden", {}, None)
+        with mock.patch("urllib.request.urlopen", side_effect=err):
+            with self.assertRaises(deps.KeyRejected) as cm:
+                steam.fetch_required_api(["1000001"], "SECRETKEY")
+        self.assertNotIn("SECRETKEY", str(cm.exception))
+        self.assertIsNone(cm.exception.__cause__)
 
 
 class CheckTest(unittest.TestCase):

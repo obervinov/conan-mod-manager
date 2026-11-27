@@ -178,6 +178,38 @@ STRINGS = {
     "dep.ask_remove": ("Other enabled mods need these:\n\n{mods}\n\nThey may break:\n\n{users}\n\nRemove anyway?",
                        "Эти моды нужны другим включённым:\n\n{mods}\n\nМогут сломаться:\n\n{users}\n\nВсё равно удалить?"),
     "dep.skipped": ("Requirements not installed: {n}. The mods may not work", "Зависимости не поставлены: {n}. Моды могут не работать"),
+    "dep.reading": ("Reading Required items from Workshop for {n} mods (one page every 1.5 s)…",
+                    "Читаю зависимости из Workshop для {n} модов (страница раз в 1,5 с)…"),
+    "dep.blocked": ("Steam is refusing Workshop page requests from this IP for now ({e}), so dependencies "
+                    "of {n} mods were not read. It usually lifts within an hour: run Check for updates later. "
+                    "Install, update and the game are not affected.",
+                    "Steam временно не отдаёт страницы Workshop на этот IP ({e}), зависимости {n} модов не "
+                    "прочитаны. Обычно проходит за час: потом нажми «Проверить обновления». На установку, "
+                    "обновления и игру это не влияет."),
+    "dep.reading_api": ("Reading Required items for {n} mods through the Steam Web API…",
+                        "Читаю зависимости {n} модов через Steam Web API…"),
+    "dep.key_rejected": ("Steam Web API refused the key ({e}): check it in 🔑", "Steam Web API не принял ключ ({e}): проверь его в 🔑"),
+    "dep.off": ("Dependency check is off (checkbox in the side panel): installing only what you asked for",
+                "Проверка зависимостей выключена (чекбокс в боковой панели): ставлю только то, что просил"),
+    "depcfg.check": ("Check dependencies", "Проверять зависимости"),
+    "depcfg.warn": ("Without a Steam Web API key, dependencies are read from Workshop pages, one page every "
+                    "1.5 s. Steam's CDN may still block this IP for a while (HTTP 403) with many mods. "
+                    "A free key (🔑 next to the checkbox) avoids it: one API request per 100 mods.\n\nEnable?",
+                    "Без ключа Steam Web API зависимости читаются со страниц Workshop, по странице раз в 1,5 с. "
+                    "При большом списке модов CDN Steam всё равно может временно забанить IP (HTTP 403). "
+                    "Бесплатный ключ (🔑 рядом с чекбоксом) это обходит: один запрос к API на 100 модов.\n\nВключить?"),
+    "depcfg.key_title": ("Steam Web API key", "Ключ Steam Web API"),
+    "depcfg.key_hint": ("Optional. With a key, dependencies come from the Steam Web API in one request "
+                        "per 100 mods instead of Workshop pages, which Steam rate-limits. Get a free key "
+                        "on the page below (any domain name works), paste it here. It is stored only in "
+                        "this app's settings file on this PC.",
+                        "Необязательно. С ключом зависимости берутся из Steam Web API, один запрос на 100 модов, "
+                        "а не со страниц Workshop, которые Steam режет. Бесплатный ключ выдают на странице ниже "
+                        "(домен можно указать любой), вставь его сюда. Хранится только в файле настроек "
+                        "приложения на этом ПК."),
+    "depcfg.key": ("Key:", "Ключ:"),
+    "depcfg.key_saved": ("Steam Web API key saved", "Ключ Steam Web API сохранён"),
+    "depcfg.key_cleared": ("Steam Web API key removed", "Ключ Steam Web API удалён"),
     "dep.unknown": ("Could not read Required items from Workshop for: {ids}", "Не прочитал зависимости из Workshop для: {ids}"),
     "dep.not_conan": ("Required items that are not Conan Exiles mods were skipped: {ids}",
                       "Пропущены зависимости, которые не моды Conan Exiles: {ids}"),

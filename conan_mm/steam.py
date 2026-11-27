@@ -7,6 +7,9 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import threading
+import time
+import urllib.error
 import urllib.parse
 import urllib.request
 import zipfile
@@ -17,6 +20,8 @@ from .i18n import t
 
 APP_ID = 440900  # Conan Exiles (workshop items)
 DETAILS_URL = "https://api.steampowered.com/ISteamRemoteStorage/GetPublishedFileDetails/v1/"
+KEYED_DETAILS_URL = "https://api.steampowered.com/IPublishedFileService/GetDetails/v1/"
+API_KEY_PAGE = "https://steamcommunity.com/dev/apikey"
 STEAMCMD_URLS = {
     "win32": "https://steamcdn-a.akamaihd.net/client/installer/steamcmd.zip",
     "darwin": "https://steamcdn-a.akamaihd.net/client/installer/steamcmd_osx.tar.gz",
@@ -62,15 +67,60 @@ def fetch_details(ids, timeout=30):
     return out
 
 
+PAGE_GAP = 1.5  # seconds between Workshop page requests: Steam's CDN bans an IP for bursts
+_page_lock = threading.Lock()
+_page_last = [0.0]
+
+
 def fetch_required(wid, timeout=20):
-    """Direct requirements of a workshop item, read from its page (the Web API does not expose them)."""
+    """Direct requirements of a workshop item, read from its page (the Web API does not expose them).
+
+    Requests are spaced PAGE_GAP apart. A 403/429 means the CDN has blocked this IP for a while:
+    raised as deps.Blocked so the caller stops instead of extending the block.
+    """
     req = urllib.request.Request(workshop_url(wid), headers={"User-Agent": "Mozilla/5.0 ConanModManager",
                                                              "Accept-Language": "en"})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        html = resp.read().decode("utf-8", errors="replace")
+    with _page_lock:
+        wait = _page_last[0] + PAGE_GAP - time.monotonic()
+        if wait > 0:
+            time.sleep(wait)
+        _page_last[0] = time.monotonic()
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            html = resp.read().decode("utf-8", errors="replace")
+    except urllib.error.HTTPError as e:
+        if e.code in (403, 429):
+            raise deps.Blocked(f"HTTP {e.code}") from e
+        raise
     if "workshopItemTitle" not in html and "RequiredItems" not in html:
         raise RuntimeError(f"unexpected Workshop page for {wid}")
     return deps.parse_required(html, wid)
+
+
+def fetch_required_api(ids, key, timeout=30):
+    """Direct requirements of many items at once through the keyed Web API ("children").
+
+    Up to 100 ids per request, no Workshop pages involved. Items the API could not
+    return are left out of the result. A refused key raises deps.KeyRejected.
+    """
+    ids, out = [str(i) for i in ids], {}
+    for start in range(0, len(ids), 100):
+        chunk = ids[start:start + 100]
+        query = {"key": key, "includechildren": "true"}
+        query.update({f"publishedfileids[{n}]": wid for n, wid in enumerate(chunk)})
+        url = KEYED_DETAILS_URL + "?" + urllib.parse.urlencode(query)
+        try:
+            with urllib.request.urlopen(url, timeout=timeout) as resp:
+                items = json.load(resp)["response"].get("publishedfiledetails", [])
+        except urllib.error.HTTPError as e:
+            if e.code in (401, 403):
+                raise deps.KeyRejected(f"HTTP {e.code}") from None  # `from None`: keep the key-bearing URL out
+            raise RuntimeError(f"Steam Web API: HTTP {e.code}") from None
+        for it in items:
+            if it.get("result") == 1:
+                out[str(it["publishedfileid"])] = [str(c["publishedfileid"]) for c in it.get("children") or []
+                                                   if str(c.get("publishedfileid")) != str(it["publishedfileid"])]
+    return out
 
 
 def default_data_dir():
