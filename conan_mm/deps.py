@@ -14,6 +14,14 @@ _LINK = re.compile(r"filedetails/\?id=(\d+)")
 LIMIT = 200  # safety net against a runaway chain
 
 
+class Blocked(Exception):
+    """Steam refused page requests (403/429 from its CDN): stop asking, every further request extends the ban."""
+
+
+class KeyRejected(Blocked):
+    """The Steam Web API refused the configured key."""
+
+
 def parse_required(html, wid=None):
     """Ids listed under "Required items" on a Workshop page, page order, without the item itself."""
     m = _BLOCK.search(html)
@@ -22,20 +30,29 @@ def parse_required(html, wid=None):
     return [i for i in dict.fromkeys(_LINK.findall(m.group(1))) if i != str(wid)]
 
 
-def resolve(roots, fetch, known=None, refresh=(), workers=8):
+def resolve(roots, fetch, known=None, refresh=(), workers=1, batch=None):
     """Transitive requirements of `roots`: {wid: [required ids]} for every id reached.
 
     `known` is a cache ({wid: [ids]}) used for ids not listed in `refresh`; `fetch(wid)`
     returns the direct requirements and may raise, which leaves that id out of the result.
-    Returns (graph, failed ids).
+    If `fetch` raises Blocked, nothing more is fetched and every id still to read is failed.
+    `batch(ids) -> {wid: [ids]}` replaces `fetch` with one call per level (the Web API path);
+    ids missing from its answer are failed.
+    Returns (graph, failed ids, Blocked or None).
     """
     known, refresh = dict(known or {}), {str(r) for r in refresh}
-    graph, failed = {}, []
+    graph, failed, blocked = {}, [], None
     queue, seen = deque(str(r) for r in roots), set()
 
     def get(wid):
+        nonlocal blocked
+        if blocked:
+            return wid, None, blocked
         try:
             return wid, fetch(wid), None
+        except Blocked as e:
+            blocked = e
+            return wid, None, e
         except Exception as e:  # noqa: BLE001 — network / parsing: reported, never fatal
             return wid, None, e
 
@@ -51,6 +68,19 @@ def resolve(roots, fetch, known=None, refresh=(), workers=8):
             for wid in level:
                 if wid not in todo:
                     graph[wid] = list(known[wid])
+            if batch and todo:
+                try:
+                    got = batch(todo)
+                except Blocked as e:
+                    blocked, got = e, {}
+                except Exception:  # noqa: BLE001
+                    got = {}
+                for wid in todo:
+                    if wid in got:
+                        graph[wid] = list(got[wid])
+                    else:
+                        failed.append(wid)
+                todo = []
             for wid, req, err in pool.map(get, todo):
                 if err is None:
                     graph[wid] = req
@@ -58,7 +88,10 @@ def resolve(roots, fetch, known=None, refresh=(), workers=8):
                     failed.append(wid)
             for wid in level:
                 queue.extend(r for r in graph.get(wid, []) if r not in seen)
-    return graph, failed
+            if blocked:
+                failed += [w for w in queue if w not in seen and w not in failed]
+                break
+    return graph, failed, blocked
 
 
 def closure(wid, graph):

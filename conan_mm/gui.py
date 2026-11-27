@@ -195,6 +195,14 @@ class App(tk.Tk):
         self.auto_cache = tk.BooleanVar(value=self.cfg.get("auto_clear_cache", True))
         ttk.Checkbutton(side, text=t("cache.auto"), variable=self.auto_cache,
                         command=self._save_auto_cache).pack(anchor="w", pady=(8, 0))
+        row = ttk.Frame(side)
+        row.pack(fill="x", pady=(4, 0))
+        self.deps_on = tk.BooleanVar(value=self.cfg.get("deps_enabled", False))
+        ttk.Checkbutton(row, text=t("depcfg.check"), variable=self.deps_on,
+                        command=self._toggle_deps).pack(side="left")
+        b = ttk.Button(row, text="🔑", width=3, command=self.api_key_settings)
+        b.pack(side="right")
+        self.buttons.append(b)
 
         self.logbox = tk.Text(self, height=8, state="disabled", wrap="word", font=("Consolas", 9))
         self.logbox.pack(fill="x", padx=6, pady=6)
@@ -498,8 +506,35 @@ class App(tk.Tk):
         self.redraw()
         self.refresh_requirements(only_unknown=True)
 
+    def _toggle_deps(self):
+        on = self.deps_on.get()
+        if on and not self.cfg.get("steam_api_key") and not messagebox.askokcancel(
+                t("dep.title"), t("depcfg.warn"), icon="warning"):
+            self.deps_on.set(False)
+            return
+        self.cfg["deps_enabled"] = on
+        self._save_cfg()
+        if on and self.game:
+            self.refresh_requirements(only_unknown=True)
+
+    def api_key_settings(self):
+        ApiKeyDialog(self)
+
+    def dep_resolver(self):
+        """None when dependency checks are off; else resolve(roots, **kw) over the Web API (key) or pages."""
+        if not self.cfg.get("deps_enabled"):
+            return None
+        key = self.cfg.get("steam_api_key")
+        if key:
+            return lambda roots, **kw: deps.resolve(
+                roots, None, batch=lambda ids: steam.fetch_required_api(ids, key), **kw)
+        return lambda roots, **kw: deps.resolve(roots, steam.fetch_required, **kw)
+
     def refresh_requirements(self, only_unknown=False, then=None):
         """Reads "Required items" of the installed Workshop mods in the background."""
+        resolve = self.dep_resolver()
+        if resolve is None:
+            return
         game = self.game
         ids = [m.wid for m in game.mods if m.wid and m.source != "missing"]
         if only_unknown:
@@ -507,18 +542,18 @@ class App(tk.Tk):
         if not ids:
             return
 
+        self.log(t("dep.reading_api" if self.cfg.get("steam_api_key") else "dep.reading", n=len(ids)))
+
         def work():
-            graph, failed = deps.resolve(ids, steam.fetch_required, known=game.requires,
-                                         refresh=[] if only_unknown else ids)
+            graph, failed, blocked = resolve(ids, known=game.requires, refresh=[] if only_unknown else ids)
             titles = self._titles_for_unknown(graph, game)
-            return graph, failed, titles
+            return graph, failed, blocked, titles
 
         def done(res):
-            graph, failed, titles = res
+            graph, failed, blocked, titles = res
             game.manifest.setdefault("dep_titles", {}).update(titles)
             game.set_requires(graph)
-            if failed:
-                self.log(t("dep.unknown", ids=", ".join(failed)))
+            self._log_dep_failures(failed, blocked)
             self.analyze()
             if self.dep_issues:
                 self.log(t("dep.found", n=len(self.dep_issues)))
@@ -526,6 +561,14 @@ class App(tk.Tk):
                 then()
 
         self.background(work, done)
+
+    def _log_dep_failures(self, failed, blocked):
+        if isinstance(blocked, deps.KeyRejected):
+            self.log(t("dep.key_rejected", e=blocked))
+        elif blocked:
+            self.log(t("dep.blocked", e=blocked, n=len(failed)))
+        elif failed:
+            self.log(t("dep.unknown", ids=", ".join(failed)))
 
     @staticmethod
     def _titles_for_unknown(graph, game):
@@ -684,19 +727,23 @@ class App(tk.Tk):
             return
         game = self.game
         ids = [str(i) for i in ids]
+        resolve = self.dep_resolver()
+        if resolve is None:
+            self.log(t("dep.off"))
+            self._download(ids)
+            return
 
         def work():
-            graph, failed = deps.resolve(ids, steam.fetch_required, known=game.requires, refresh=ids)
+            graph, failed, blocked = resolve(ids, known=game.requires, refresh=ids)
             have = {m.wid for m in game.mods if m.wid and m.source != "missing"}
             need = list(dict.fromkeys(w for i in ids for w in deps.closure(i, graph) if w not in have and w not in ids))
             details = steam.fetch_details(need) if need else {}
-            return graph, failed, need, details
+            return graph, failed, blocked, need, details
 
         def then(res):
-            graph, failed, need, details = res
+            graph, failed, blocked, need, details = res
             game.set_requires(graph)
-            if failed:
-                self.log(t("dep.unknown", ids=", ".join(failed)))
+            self._log_dep_failures(failed, blocked)
             bad = [w for w in need if not details.get(w, {}).get("ok")]
             if bad:
                 self.log(t("dep.not_conan", ids=", ".join(bad)))
@@ -995,3 +1042,42 @@ class LaunchDialog(tk.Toplevel):
         self.app._save_cfg()
         self.app.log(t("launch.saved", mode=t(f"launch.mode_{self.mode.get()}")))
         self.destroy()
+
+
+class ApiKeyDialog(tk.Toplevel):
+    """Optional Steam Web API key: dependencies through the API instead of Workshop pages."""
+
+    def __init__(self, app):
+        super().__init__(app)
+        self.app = app
+        self.title(t("depcfg.key_title"))
+        self.transient(app)
+        self.resizable(True, False)
+        body = ttk.Frame(self, padding=10)
+        body.pack(fill="both", expand=True)
+        ttk.Label(body, text=t("depcfg.key_hint"), wraplength=520, justify="left").pack(fill="x")
+        ttk.Button(body, text=steam.API_KEY_PAGE, command=lambda: webbrowser.open(steam.API_KEY_PAGE)).pack(
+            anchor="w", pady=(8, 0))
+        row = ttk.Frame(body)
+        row.pack(fill="x", pady=(8, 0))
+        ttk.Label(row, text=t("depcfg.key")).pack(side="left")
+        self.key = tk.StringVar(value=app.cfg.get("steam_api_key", ""))
+        ttk.Entry(row, textvariable=self.key, show="•", width=40).pack(side="left", fill="x", expand=True, padx=6)
+        btns = ttk.Frame(body)
+        btns.pack(fill="x", pady=(10, 0))
+        ttk.Button(btns, text=t("launch.save"), command=self._save).pack(side="right")
+        ttk.Button(btns, text=t("conf.close"), command=self.destroy).pack(side="right", padx=6)
+        dark_titlebar(self, app.theme == "dark")
+        self.grab_set()
+
+    def _save(self):
+        key = self.key.get().strip()
+        if key:
+            self.app.cfg["steam_api_key"] = key
+        else:
+            self.app.cfg.pop("steam_api_key", None)
+        self.app._save_cfg()
+        self.app.log(t("depcfg.key_saved") if key else t("depcfg.key_cleared"))
+        self.destroy()
+        if key and self.app.deps_on.get() and self.app.game:
+            self.app.refresh_requirements()
