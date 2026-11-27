@@ -5,7 +5,7 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/) and this p
 
 ## v0.9.0 - 2026-11-27
 #### 🚀 Features
-* **Mod dependencies.** The Workshop "Required items" of every mod are read from its Workshop page (the Steam Web API does not return them without a key), followed through the whole chain, and cached in `conan-mod-manager.json`:
+* **Mod dependencies.** The Workshop Required items of every mod are read from its Workshop page (the Steam Web API does not return them without a key), followed through the whole chain, and cached in `conan-mod-manager.json`:
   - installing or updating a mod offers to install the requirements it is missing, the whole chain, requirements first so they load above
   - the **Status** column flags an enabled mod whose requirement is not installed, disabled, or loads below it
   - disabling or removing a mod that other enabled mods need asks first and names them; enabling a mod offers to enable its disabled requirements
