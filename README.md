@@ -38,6 +38,7 @@ It works with or without the Steam client: downloads go through an anonymous `st
 | `ConanSandbox/Mods/conan-mod-manager.json` | Records which `.pak` files belong to which Workshop ID, plus the full order (including disabled mods). This is why removal is exact. |
 | `steamcmd` | Fetched automatically on first use into `%LOCALAPPDATA%\ConanModManager\steamcmd`. Runs `+login anonymous +workshop_download_item 440900 <id>` with up to 3 retries. Its own copy of a mod is deleted right after install. |
 | `ConanSandbox/Saved/ExtractedMods`, `ModsCached`, `ModControllerCache.json`, `Modrestartdata.json` | The game's own mod cache, rebuilt from the paks on start. A removed or updated mod's unpacked copy is deleted; the whole cache can be cleared with one button. World saves (`SaveGames`) and `Config` are never touched. |
+| Workshop page | The "Required items" block of each mod's page (the Web API does not return it without a key). The chain is followed recursively and cached in the manifest under `requires`; installing offers the missing ones, the Status column flags missing, disabled or misplaced requirements. |
 | Steam Web API | `ISteamRemoteStorage/GetPublishedFileDetails` (no API key needed) supplies titles, `time_updated` for update checks, and file sizes for integrity checks. |
 
 The mod list combines three sources:
@@ -86,6 +87,7 @@ On first start it finds the Steam install of Conan Exiles through the registry a
 | Update selected / Update all | Re-download the outdated or broken mods |
 | Link to Workshop ID | Turn a hand-dropped `.pak` into a tracked mod |
 | Remove | Delete the mod files and remove them from `modlist.txt` |
+| Right-click → Install missing requirements | Install the Workshop "Required items" the selected mods (or all mods) are missing |
 | Conflicts & load order… | Conflicts between enabled mods and a suggested load order you can apply in one click |
 | Clear game mod cache… | Wipe the game's unpacked mods and mod caches (fixes a stale or broken mod cache); the game rebuilds them on the next start |
 | Auto-reset mod cache (checkbox, on by default) | Wipe the whole game mod cache whenever the set of mods changes (install, update, remove, enable/disable), so nothing stale is left; the next game start is slower |

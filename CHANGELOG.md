@@ -3,6 +3,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
 
+## v0.9.0 - 2026-11-27
+#### 🚀 Features
+* **Mod dependencies.** The Workshop "Required items" of every mod are read from its Workshop page (the Steam Web API does not return them without a key), followed through the whole chain, and cached in `conan-mod-manager.json`:
+  - installing or updating a mod offers to install the requirements it is missing, the whole chain, requirements first so they load above
+  - the **Status** column flags an enabled mod whose requirement is not installed, disabled, or loads below it
+  - disabling or removing a mod that other enabled mods need asks first and names them; enabling a mod offers to enable its disabled requirements
+  - **Conflicts & load order…** lists the dependency problems, and the suggested order always puts a requirement above the mod that needs it, over the conflict heuristics
+  - right-click → **Install missing requirements**; **Check for updates** also re-reads the requirements
+  - if a Workshop page cannot be read, the log says which mod, and nothing is blocked
+
 ## v0.8.0 - 2026-11-27
 #### 🚀 Features
 * **▶ Play** button starts the game from the app, and **⚙** next to it picks how: through Steam (`steam://rungameid/440900`), `ConanSandbox.exe` directly with extra arguments, or your own `.bat` / `.cmd` / `.exe` / shortcut with arguments, e.g. a batch file with debug flags. A `.bat` opens in its own console window and receives the arguments as `%*`. The choice is remembered.

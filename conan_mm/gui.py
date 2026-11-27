@@ -10,7 +10,7 @@ import webbrowser
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
-from . import __version__, analyze, i18n, launch, steam
+from . import __version__, analyze, deps, i18n, launch, steam
 from .core import Game
 from .i18n import t
 
@@ -94,6 +94,7 @@ class App(tk.Tk):
         self.details = {}
         self.scanner = analyze.Scanner()
         self.infos, self.conflicts, self.engine = {}, [], None
+        self.dep_issues = []
         self.sort_by = None  # None = load order, or "added" / "updated": newest first
         self.steamcmd = steam.SteamCmd(self.data_dir / "steamcmd", log=self.log_threadsafe)
         self.cfg = self._load_cfg()
@@ -148,6 +149,7 @@ class App(tk.Tk):
         self.menu.add_command(label=t("menu.copy_url"), command=lambda: self.copy("url"))
         self.menu.add_command(label=t("menu.copy_path"), command=lambda: self.copy("path"))
         self.menu.add_separator()
+        self.menu.add_command(label=t("menu.install_deps"), command=lambda: self.install_requirements())
         self.menu.add_command(label=t("btn.open"), command=lambda: self.open_page())
         for seq in ("<Button-3>", "<Button-2>"):
             self.tree.bind(seq, self._popup)
@@ -379,6 +381,18 @@ class App(tk.Tk):
         self.infos = {m.key: self.scanner.mod(m) for m in self.game.mods if m.files}
         enabled = [m for m in self.game.mods if m.enabled and m.key in self.infos]
         self.conflicts = analyze.find_conflicts(enabled, self.infos)
+        self.dep_issues = deps.check(self.game.mods, self.game.requires)
+
+    def dep_name(self, wid):
+        m = next((m for m in self.game.mods if m.wid == wid and m.source != "missing"), None)
+        if m:
+            return m.title
+        return self.game.manifest.get("dep_titles", {}).get(wid) or self.details.get(wid, {}).get("title") or f"#{wid}"
+
+    def dep_status(self, issues):
+        first = issues[0]
+        text = t(f"dep.status_{first.kind}", name=self.dep_name(first.need))
+        return text + (f" (+{len(issues) - 1})" if len(issues) > 1 else "")
 
     def redraw(self):
         if not self.game:
@@ -388,6 +402,9 @@ class App(tk.Tk):
         for c in self.conflicts:
             for k in (c.winner, c.loser):
                 per_mod[k] = per_mod.get(k, 0) + 1
+        by_mod = {}
+        for i in self.dep_issues:
+            by_mod.setdefault(i.mod, []).append(i)
         sel = set(self.tree.selection())
         self.tree.delete(*self.tree.get_children())
         pos, n = {}, 0
@@ -401,14 +418,18 @@ class App(tk.Tk):
             n = pos[m.key]
             info = self.infos.get(m.key)
             compat = analyze.compat_issue(info.engine, self.engine) if info else None
-            if compat:
+            if by_mod.get(m.key):
+                status = self.dep_status(by_mod[m.key])
+            elif compat:
                 status = t(f"compat.{compat}")
             elif info and info.error:
                 status = t("status.unreadable", e=info.error)
             else:
                 status = t(f"status.{m.status}") if m.status else ""
             tags = ("off",) if not m.enabled else ()
-            if compat or (info and info.error) or m.status not in ("", "ok") or per_mod.get(m.key):
+            if by_mod.get(m.key):
+                tags += ("bad",)
+            elif compat or (info and info.error) or m.status not in ("", "ok") or per_mod.get(m.key):
                 tags += ("warn",)
             self.tree.insert("", "end", iid=m.key, tags=tags, values=(
                 n if m.enabled else "", "✔" if m.enabled else "", m.title, m.wid or "",
@@ -475,6 +496,48 @@ class App(tk.Tk):
         self.engine = analyze.game_engine(self.game)
         self.log(t("log.opened", n=len(self.game.mods), ver=t(f"engine.{self.engine or 'unknown'}")))
         self.redraw()
+        self.refresh_requirements(only_unknown=True)
+
+    def refresh_requirements(self, only_unknown=False, then=None):
+        """Reads "Required items" of the installed Workshop mods in the background."""
+        game = self.game
+        ids = [m.wid for m in game.mods if m.wid and m.source != "missing"]
+        if only_unknown:
+            ids = [w for w in ids if w not in game.requires]
+        if not ids:
+            return
+
+        def work():
+            graph, failed = deps.resolve(ids, steam.fetch_required, known=game.requires,
+                                         refresh=[] if only_unknown else ids)
+            titles = self._titles_for_unknown(graph, game)
+            return graph, failed, titles
+
+        def done(res):
+            graph, failed, titles = res
+            game.manifest.setdefault("dep_titles", {}).update(titles)
+            game.set_requires(graph)
+            if failed:
+                self.log(t("dep.unknown", ids=", ".join(failed)))
+            self.analyze()
+            if self.dep_issues:
+                self.log(t("dep.found", n=len(self.dep_issues)))
+            if then:
+                then()
+
+        self.background(work, done)
+
+    @staticmethod
+    def _titles_for_unknown(graph, game):
+        """Titles of required ids that are not installed, for the status column and dialogs."""
+        have = {m.wid for m in game.mods if m.wid}
+        unknown = sorted({r for reqs in graph.values() for r in reqs} - have)
+        if not unknown:
+            return {}
+        try:
+            return {w: d["title"] for w, d in steam.fetch_details(unknown).items() if d["ok"]}
+        except Exception:  # noqa: BLE001 — titles are cosmetic
+            return {}
 
     def _show_path(self):
         ws = f" | Workshop: {self.game.workshop_dir}" if self.game.workshop_dir else t("app.no_workshop")
@@ -510,13 +573,35 @@ class App(tk.Tk):
     @guarded
     def toggle(self):
         keys = self.selected()
-        for k in keys:
-            m = self.game.get(k)
+        mods = [self.game.get(k) for k in keys]
+        off = [m for m in mods if m.enabled]
+        on = [m for m in mods if not m.enabled]
+        if off and not self._confirm_dependents(off, "dep.ask_disable"):
+            return
+        for m in mods:
             m.enabled = not m.enabled
+        if on:
+            by_wid = {m.wid: m for m in self.game.mods if m.wid and m.source != "missing"}
+            need = {by_wid[w].key: by_wid[w] for m in on if m.wid
+                    for w in deps.closure(m.wid, self.game.requires) if w in by_wid and not by_wid[w].enabled}
+            if need and messagebox.askyesno(t("dep.title"), t(
+                    "dep.ask_enable", names="\n".join(m.title for m in need.values()))):
+                for m in need.values():
+                    m.enabled = True
         if keys:
             self.game.save()
             self.mods_changed()
             self.redraw()
+
+    def _confirm_dependents(self, mods, ask_key):
+        """Asks before disabling/removing mods that other enabled mods need. True = go ahead."""
+        wids = [m.wid for m in mods if m.wid]
+        users = [m for m in deps.dependents(wids, self.game.mods, self.game.requires) if m not in mods]
+        if not users:
+            return True
+        return messagebox.askyesno(t("dep.title"), t(
+            ask_key, mods="\n".join(m.title for m in mods if m.wid in wids),
+            users="\n".join(m.title for m in users)), icon="warning")
 
     @guarded
     def move(self, delta):
@@ -533,6 +618,8 @@ class App(tk.Tk):
     def remove(self):
         keys = self.selected()
         if not keys or not self.ensure_closed():
+            return
+        if not self._confirm_dependents([self.game.get(k) for k in keys], "dep.ask_remove"):
             return
         names = "\n".join(self.game.get(k).title for k in keys)
         if not messagebox.askyesno(t("remove.title"), t("remove.ask", names=names)):
@@ -590,9 +677,46 @@ class App(tk.Tk):
         ids = list(dict.fromkeys(steam.parse_workshop_id(x) for x in re.split(r"[\s,;]+", text) if x))
         self.install(ids)
 
-    def install(self, ids):
+    def install(self, ids, ask=True):
+        """Reads the Required items of `ids` (and of their requirements), offers the missing
+        ones, then downloads everything with requirements first so they land above in the order."""
         if not self.ensure_closed():
             return
+        game = self.game
+        ids = [str(i) for i in ids]
+
+        def work():
+            graph, failed = deps.resolve(ids, steam.fetch_required, known=game.requires, refresh=ids)
+            have = {m.wid for m in game.mods if m.wid and m.source != "missing"}
+            need = list(dict.fromkeys(w for i in ids for w in deps.closure(i, graph) if w not in have and w not in ids))
+            details = steam.fetch_details(need) if need else {}
+            return graph, failed, need, details
+
+        def then(res):
+            graph, failed, need, details = res
+            game.set_requires(graph)
+            if failed:
+                self.log(t("dep.unknown", ids=", ".join(failed)))
+            bad = [w for w in need if not details.get(w, {}).get("ok")]
+            if bad:
+                self.log(t("dep.not_conan", ids=", ".join(bad)))
+            need = [w for w in need if w not in bad]
+            game.manifest.setdefault("dep_titles", {}).update({w: details[w]["title"] for w in need})
+            todo = list(ids)
+            if need and ask:
+                names = "\n".join(f"{details[w]['title']} ({w})" for w in need)
+                answer = messagebox.askyesnocancel(t("dep.title"), t("dep.ask_install", names=names))
+                if answer is None:
+                    return
+                if answer:
+                    todo += need
+                else:
+                    self.log(t("dep.skipped", n=len(need)))
+            self._download(deps.install_order(todo, graph))
+
+        self.background(work, then)
+
+    def _download(self, ids):
         game = self.game
 
         def work():
@@ -669,8 +793,20 @@ class App(tk.Tk):
             self.game.apply_details(details)
             n = sum(m.status == "update" for m in self.game.mods)
             self.log(t("check.done", n=len(ids), u=n))
+            self.refresh_requirements()
 
         self.background(lambda: steam.fetch_details(ids), then)
+
+    @guarded
+    def install_requirements(self):
+        """Context menu: install the missing requirements of the selected mods (all mods if none selected)."""
+        keys = set(self.selected())
+        need = list(dict.fromkeys(i.need for i in self.dep_issues
+                                  if i.kind == "missing" and (not keys or i.mod in keys)))
+        if not need:
+            self.log(t("dep.none_missing"))
+            return
+        self.install(need, ask=False)
 
     @guarded
     def update_selected(self):
@@ -747,15 +883,20 @@ class ConflictsDialog(tk.Toplevel):
             self.by_iid[iid] = c
             self.ctree.insert("", "end", iid=iid, tags=("bad",) if wrong or c.kind == "duplicate" else (),
                               values=(label, self._title(c.winner), self._title(c.loser), len(c.assets)))
+        for j, issue in enumerate(app.dep_issues):
+            self.ctree.insert("", "end", iid=f"dep{j}", tags=("bad",), values=(
+                t(f"dep.kind_{issue.kind}"), self._title(issue.mod), app.dep_name(issue.need), ""))
         unread = sum(1 for m in enabled if app.infos.get(m.key) and app.infos[m.key].error)
         ue5 = sum(1 for m in enabled if app.infos.get(m.key) and app.infos[m.key].engine == "UE5")
         self.summary.configure(text=(
             t("conf.summary", n=len(enabled), c=len(app.conflicts))
             + (t("conf.bad", n=bad) if bad else "")
+            + (t("conf.deps", n=len(app.dep_issues)) if app.dep_issues else "")
             + (t("conf.ue5", n=ue5) if ue5 else "")
             + (t("conf.unread", n=unread) if unread else "")))
 
-        self.suggested = analyze.suggest_order(enabled, app.infos, app.conflicts)
+        self.suggested = analyze.suggest_order(enabled, app.infos, app.conflicts,
+                                               deps.must_load_before(enabled, app.game.requires))
         self.otree.delete(*self.otree.get_children())
         for i, (m, key) in enumerate(zip(enabled, self.suggested), 1):
             self.otree.insert("", "end", tags=("moved",) if m.key != key else (),
